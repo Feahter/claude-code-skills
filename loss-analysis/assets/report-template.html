@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>历史任务时间损耗分析报告 - {{YYYY-MM-DD}}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0f1216;
+    --panel: #161a21;
+    --panel-2: #1c2128;
+    --border: #2a313c;
+    --fg: #e6edf3;
+    --fg-mute: #9aa6b2;
+    --accent: #7ee787;
+    --warn: #f0b072;
+    --danger: #ff7b72;
+    --info: #79c0ff;
+    --code-bg: #0d1117;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--fg); }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+    line-height: 1.7;
+    font-size: 15px;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 48px 32px 96px; }
+  header { border-bottom: 1px solid var(--border); padding-bottom: 24px; margin-bottom: 32px; }
+  h1 { font-size: 28px; margin: 0 0 12px; font-weight: 600; letter-spacing: 0.5px; }
+  h2 { font-size: 22px; margin: 48px 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); font-weight: 600; }
+  h3 { font-size: 18px; margin: 32px 0 12px; color: var(--info); font-weight: 600; }
+  h3 .tag { display: inline-block; background: var(--panel-2); color: var(--fg-mute); font-size: 12px; padding: 2px 8px; border-radius: 4px; margin-right: 8px; vertical-align: middle; }
+  p, li { color: var(--fg); }
+  strong { color: var(--accent); font-weight: 600; }
+  em { color: var(--warn); font-style: normal; }
+  a { color: var(--info); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code {
+    background: var(--code-bg);
+    color: var(--info);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    padding: 12px 16px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 13px;
+  }
+  pre code { background: transparent; padding: 0; color: var(--fg); }
+  blockquote {
+    border-left: 3px solid var(--info);
+    margin: 16px 0;
+    padding: 8px 16px;
+    color: var(--fg-mute);
+    background: var(--panel);
+  }
+  ul, ol { padding-left: 24px; }
+  li { margin: 4px 0; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+
+  .meta { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; color: var(--fg-mute); font-size: 14px; }
+  .meta dt { color: var(--fg-mute); }
+  .meta dd { margin: 0; color: var(--fg); }
+
+  /* KPI 卡 */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+    margin: 16px 0 24px;
+  }
+  .kpi {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .kpi .label { color: var(--fg-mute); font-size: 12px; }
+  .kpi .value { font-size: 22px; font-weight: 600; margin: 4px 0; color: var(--fg); }
+  .kpi .value.warn { color: var(--warn); }
+  .kpi .value.danger { color: var(--danger); }
+  .kpi .value.ok { color: var(--accent); }
+  .kpi .hint { color: var(--fg-mute); font-size: 12px; }
+
+  /* 表格 */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  th, td {
+    border-bottom: 1px solid var(--border);
+    padding: 10px 12px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background: var(--panel-2); color: var(--fg-mute); font-weight: 600; font-size: 13px; }
+  tbody tr:hover { background: var(--panel); }
+
+  /* 事件块 */
+  .event {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--warn);
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin: 20px 0;
+  }
+  .event h3 { margin-top: 0; color: var(--warn); }
+  .event .field { margin: 12px 0; }
+  .event .field-label {
+    display: inline-block;
+    color: var(--fg-mute);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+  .event.priority-high { border-left-color: var(--danger); }
+  .event.priority-high h3 { color: var(--danger); }
+  .event.priority-low { border-left-color: var(--accent); }
+  .event.priority-low h3 { color: var(--accent); }
+
+  .footer-note {
+    margin-top: 64px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    color: var(--fg-mute);
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>历史任务时间损耗分析报告</h1>
+  <dl class="meta">
+    <dt>生成日期</dt><dd>{{YYYY-MM-DD}}</dd>
+    <dt>窗口</dt><dd>最近 {{N}} 天</dd>
+    <dt>样本</dt><dd>{{sessions}} 个会话 / {{duration_h}} 协作小时 / {{assistant_msgs}} 条 assistant 回复 / {{tool_calls}} 次工具调用</dd>
+    <dt>主战场</dt><dd>{{top_project_name}} 占 {{top_project_h}}h（{{top_project_pct}}%），其余分散在 {{other_projects}}</dd>
+    <dt>数据源</dt><dd><code>~/.claude/projects/**/*.jsonl</code></dd>
+    <dt>原始数据</dt><dd><code>/tmp/claude-loss-analysis/raw.json</code></dd>
+  </dl>
+</header>
+
+<h2>一、宏观信号（剔除系统注入后）</h2>
+
+<!-- 关键 KPI 卡片，按需填，删掉用不到的 -->
+<div class="kpi-grid">
+  <div class="kpi">
+    <div class="label">用户主动纠正率</div>
+    <div class="value warn">{{correction_rate}}%</div>
+    <div class="hint">{{corrections}} / {{user_msgs}} 条真用户消息</div>
+  </div>
+  <div class="kpi">
+    <div class="label">工具失败率</div>
+    <div class="value warn">{{tool_fail_rate}}%</div>
+    <div class="hint">{{tool_failures}} / {{tool_calls}} 次工具调用</div>
+  </div>
+  <div class="kpi">
+    <div class="label">完成声明无验证</div>
+    <div class="value danger">{{completion_no_verify}}</div>
+    <div class="hint">平均每 {{completion_avg}} 会话出现一次</div>
+  </div>
+  <div class="kpi">
+    <div class="label">并行工具调用率</div>
+    <div class="value danger">{{parallel_ratio}}%</div>
+    <div class="hint">{{parallel_comment}}</div>
+  </div>
+  <div class="kpi">
+    <div class="label">同会话重复读热点</div>
+    <div class="value warn">{{duplicate_reads}}</div>
+    <div class="hint">{{top_dup_files}}</div>
+  </div>
+  <div class="kpi">
+    <div class="label">自动压缩事件</div>
+    <div class="value warn">{{compactions}}</div>
+    <div class="hint">每 {{compaction_avg}} 会话触发一次</div>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr><th>指标</th><th>数量</th><th>解读</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>真用户消息</td><td>{{user_msgs}}</td><td>平均每会话 {{avg_user_per_session}} 条主动输入</td></tr>
+    <tr><td>用户主动纠正</td><td>{{corrections}}</td><td><strong>{{correction_rate}}%</strong> 输入是在打回 Claude</td></tr>
+    <tr><td>工具调用失败</td><td>{{tool_failures}}</td><td><strong>{{tool_fail_rate}}%</strong> 失败率，{{top_failed_tools}} 占大头</td></tr>
+    <tr><td>完成声明未跟验证</td><td>{{completion_no_verify}}</td><td>平均每 {{completion_avg}} 会话出现一次"已修好/已推送"但未跑 typecheck/test</td></tr>
+    <tr><td>同会话重复读同一文件</td><td>{{duplicate_reads}} 文件次</td><td>大量出现在 {{top_dup_files}} 等热点文件</td></tr>
+    <tr><td>自动压缩事件</td><td>{{compactions}}</td><td>长会话被截断，平均每 {{compaction_avg}} 会话触发一次压缩</td></tr>
+    <tr><td>并行工具调用率</td><td><strong>{{parallel_ratio}}%</strong></td><td>{{parallel_comment}}</td></tr>
+    <tr><td>探索工具串行长链(≥5 步)</td><td>{{serial_long}} 段</td><td>最长一段连续 {{max_serial}} 次单工具 Read/Grep/Glob，本可一并发出</td></tr>
+    <tr><td>子 agent 调用</td><td>{{subagent_calls}} 次</td><td>{{subagent_comment}}</td></tr>
+  </tbody>
+</table>
+
+<h2>二、Top-N 高损耗事件（按时间损耗排序）</h2>
+
+<!--
+事件块复制粘贴下面这个 div.event 模块，按需调整：
+- priority-high / priority-low / 默认（warn 黄）三种色级
+- 现象/原因/方案/成本 四段固定
+-->
+
+<div class="event">
+  <h3><span class="tag">#N</span>{{事件标题——一句话量化}}</h3>
+
+  <div class="field">
+    <div class="field-label">现象</div>
+    <p>{{用可量化数字 + 1-2 个真实样本片段（从 raw.json 的 examples 字段取）}}</p>
+  </div>
+
+  <div class="field">
+    <div class="field-label">原因</div>
+    <ul>
+      <li>{{根因 1：落到具体规则违反或习惯偏差}}</li>
+      <li>{{根因 2}}</li>
+    </ul>
+  </div>
+
+  <div class="field">
+    <div class="field-label">方案</div>
+    <ul>
+      <li><strong>流程上</strong>：{{流程改进建议}}</li>
+      <li><strong>工具上</strong>：{{hook / agent / skill 兜底建议}}</li>
+    </ul>
+  </div>
+
+  <div class="field">
+    <div class="field-label">成本</div>
+    <p>{{低 / 中 / 高}}。{{展开成本说明}}</p>
+  </div>
+</div>
+
+<h2>三、综合诊断</h2>
+<p>按时间损耗规模排序，<strong>最值得改的两件事</strong>：</p>
+<ol>
+  <li><strong>{{第一杠杆点}}</strong>（事件 #X + #Y）。{{量化收益}}。{{改动成本评估}}。</li>
+  <li><strong>{{第二杠杆点}}</strong>（事件 #Z）。{{量化收益}}。</li>
+</ol>
+<p><strong>次优先</strong>：{{次优先建议}}。</p>
+
+<h2>四、可立即落地的 3 个改动</h2>
+<table>
+  <thead>
+    <tr><th>改动</th><th>实现方式</th><th>预期收益</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>{{改动 1}}</td><td>{{实现方式 1}}</td><td>{{收益 1}}</td></tr>
+    <tr><td>{{改动 2}}</td><td>{{实现方式 2}}</td><td>{{收益 2}}</td></tr>
+    <tr><td>{{改动 3}}</td><td>{{实现方式 3}}</td><td>{{收益 3}}</td></tr>
+  </tbody>
+</table>
+
+<div class="footer-note">
+  原始扫描 JSON：<code>/tmp/claude-loss-analysis/raw.json</code> · 重新扫描请运行
+  <code>python3 ~/.claude/skills/loss-analysis/scripts/scan.py --days N</code>
+</div>
+
+</div>
+</body>
+</html>
