@@ -1,0 +1,31 @@
+import { test, expect } from '@playwright/test';
+import { loginAs } from '../actions/auth.actions';
+
+// 权限边界（ABAC）模板：同一页面，授权角色能进能操作，未授权角色被挡
+// 详见 references/architecture.md（高风险链路）+ references/adversarial-coverage.md（角色权限维度）
+//
+// 前置：tests/actions/auth.actions.ts 已封装 loginAs(page, role)（见 examples/actions/）
+
+test.describe('__TEST_NAME__（权限边界）', () => {
+  test('授权角色可访问并看到关键操作', async ({ page }) => {
+    await loginAs(page, 'admin');
+    await page.goto('__URL_PATH__');
+
+    // 没被踢回登录/403，且关键操作可见
+    await expect(page).toHaveURL(new RegExp('__URL_PATH__'.replace(/\//g, '\\/')));
+    // TODO: 替换为该页面授权角色才有的关键元素。优先级 Role > Label > Text > TestId
+    // ⚠️ 按 project.json.uiLib 对照 references/selectors.md「UI 库特定坑」调整
+    // await expect(page.getByRole('button', { name: '审批' })).toBeVisible();
+  });
+
+  test('未授权角色被挡在外', async ({ page }) => {
+    await loginAs(page, 'guest');
+    await page.goto('__URL_PATH__');
+
+    // 断言"挡住"的两种常见形态，按项目实际保留其一：
+    // 形态 A：重定向到登录/403/无权限页
+    await expect(page).toHaveURL(/\/login|\/403|\/forbidden|\/no-permission/);
+    // 形态 B：停在原页但只看到无权限提示（与 A 二选一）
+    // await expect(page.getByText(/无权限|没有权限|无访问权限|403/)).toBeVisible();
+  });
+});

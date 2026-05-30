@@ -1,0 +1,24 @@
+// 业务 DSL 风格 spec：spec 只描述业务行为，不直接操作 UI
+// 详见 references/architecture.md
+//
+// 前置：在 tests/actions/ 下封装好业务动作
+//   参考 examples/actions/auth.actions.ts（loginAs/logout）、examples/actions/order.actions.ts（createOrder/approvePayment）
+// ⚠️ 业务动作内部选择器按 project.json.uiLib 对照 references/selectors.md「UI 库特定坑」调整
+
+import { test, expect } from '@playwright/test';
+import { loginAs } from '../actions/auth.actions';
+// import { createOrder, approvePayment } from '../actions/order.actions';
+
+test('__TEST_NAME__', async ({ page }) => {
+  await loginAs(page, 'admin');
+
+  // 用业务动作描述意图，不出现 page.click / page.fill
+  // const order = await createOrder(page, { product: 'demo', qty: 1 });
+  // await approvePayment(page, order.id);
+
+  await page.goto('__URL_PATH__');
+  await expect(page.getByRole('heading', { name: '__TEST_NAME__' })).toBeVisible();
+
+  // 业务断言：用户能看见的最终结果
+  // await expect(page.getByText('已支付')).toBeVisible();
+});

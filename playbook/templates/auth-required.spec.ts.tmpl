@@ -1,0 +1,16 @@
+import { test, expect } from '@playwright/test';
+
+// 依赖 playwright.config.ts 的 use.storageState 已配置（tests/.auth/user.json）
+// 没配 → 看 references/setup-recipes.md "storageState 复用"
+
+test('__TEST_NAME__（需登录）', async ({ page }) => {
+  await page.goto('__URL_PATH__');
+
+  // 进入登录态页面后的断言：URL 没被踢回 /login，关键元素可见
+  await expect(page).toHaveURL(new RegExp('__URL_PATH__'.replace(/\//g, '\\/')));
+
+  // TODO: 替换为页面关键交互。优先级 Role > Label > Text > TestId
+  // ⚠️ 按 project.json.uiLib 对照 references/selectors.md「UI 库特定坑」调整（antd 文本走正则、MUI 全走 Role）
+  // await page.getByRole('button', { name: '保存' }).click();
+  // await expect(page.getByText('保存成功')).toBeVisible();
+});

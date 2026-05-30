@@ -1,0 +1,22 @@
+import { test, expect } from '@playwright/test';
+
+// 视觉回归模板：toHaveScreenshot 首次跑生成基线，后续对比
+// 注意 CI 环境字体渲染要一致（用 Docker 镜像）
+
+test('__TEST_NAME__', async ({ page }) => {
+  await page.goto('__URL_PATH__');
+
+  // 等页面稳定再截：等关键元素出现（选择器优先级 Role > Label > Text > TestId）
+  // ⚠️ 按 project.json.uiLib 对照 references/selectors.md「UI 库特定坑」选稳定的等待锚点
+  // await expect(page.getByRole('main')).toBeVisible();
+
+  // 屏蔽动态内容（时间、随机 ID 等）
+  await expect(page).toHaveScreenshot({
+    maxDiffPixelRatio: 0.01,
+    fullPage: true,
+    mask: [
+      // page.getByTestId('current-time'),
+      // page.getByTestId('user-avatar'),
+    ],
+  });
+});

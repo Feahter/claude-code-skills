@@ -1,0 +1,14 @@
+import { test, expect } from '@playwright/test';
+
+test('__TEST_NAME__', async ({ page }) => {
+  await page.goto('__URL_PATH__');
+
+  // TODO: 替换为真实交互。优先级 Role > Label > Text > TestId
+  // ⚠️ 按 project.json.uiLib 对照 references/selectors.md「UI 库特定坑」调整（antd 文本走正则、MUI 全走 Role）
+  // 例：
+  //   await page.getByRole('button', { name: '继续' }).click();
+  //   await page.getByLabel('搜索').fill('关键词');
+
+  // 必须有 web-first 断言（references/assertions.md）
+  await expect(page).toHaveTitle(/.+/);
+});

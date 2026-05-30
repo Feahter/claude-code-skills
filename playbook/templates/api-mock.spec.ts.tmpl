@@ -1,0 +1,25 @@
+import { test, expect } from '@playwright/test';
+
+// API mock 模板：拦截接口 → 返回 fixture → 验证 UI 渲染
+// 详见 references/mocking.md
+
+test('__TEST_NAME__', async ({ page }) => {
+  // 注意：route 必须在 goto 之前注册
+  await page.route('__API_PATTERN__', async route => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        // TODO: 替换为真实 mock 数据，或从 tests/mocks/ 引入 JSON 文件
+        items: [],
+        total: 0,
+      }),
+    });
+  });
+
+  await page.goto('__URL_PATH__');
+
+  // TODO: 验证 UI 按 mock 数据正确渲染。选择器优先级 Role > Label > Text > TestId
+  // ⚠️ 按 project.json.uiLib 对照 references/selectors.md「UI 库特定坑」调整（antd Modal 渲染到 body 末尾，用 getByRole('dialog') 进作用域）
+  await expect(page.getByText(/暂无|空|无数据/)).toBeVisible();
+});
