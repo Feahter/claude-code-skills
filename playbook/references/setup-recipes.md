@@ -132,3 +132,60 @@ tests/.auth/
 test-results/
 playwright-report/
 ```
+
+## Vitest 搭建配方（单测 / 集成层）
+
+E2E 之外的单元/集成层底座。`scaffold-unit.sh` 按此配方一键搭建；手动搭也照这份。
+
+```bash
+# 装包（先看 packageManager；下例 pnpm）
+pnpm add -D vitest @vitest/coverage-v8 jsdom \
+  @testing-library/react @testing-library/user-event @testing-library/jest-dom msw
+# Vue 项目把 @testing-library/react 换成 @testing-library/vue
+```
+
+`vitest.config.ts` 关键字段：
+
+```ts
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    globals: true,            // 不用每个文件 import describe/it/expect
+    environment: 'jsdom',     // 组件/集成测试要 DOM；纯逻辑可 'node'
+    setupFiles: './src/test-utils/setup.ts',
+    coverage: {
+      provider: 'v8',         // 比 istanbul 快 3-5 倍
+      reporter: ['text', 'html', 'lcov'],
+      exclude: ['**/*.d.ts', '**/*.config.*', '**/test-utils/**', '**/*.test.*'],
+      // 门限按 references/test-pyramid.md 分层目标设；不设全局 100%
+      thresholds: { lines: 80, branches: 70, functions: 80, statements: 80 },
+    },
+  },
+});
+```
+
+`src/test-utils/setup.ts`（全局接管 MSW server 生命周期 + jest-dom 断言）：
+
+```ts
+import '@testing-library/jest-dom/vitest';
+import { afterAll, afterEach, beforeAll } from 'vitest';
+import { server } from './server';  // setupServer(...handlers) 见 references/mocking.md
+
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
+```
+
+`package.json` scripts：
+
+```json
+{
+  "test": "vitest",
+  "test:run": "vitest run",
+  "test:coverage": "vitest run --coverage",
+  "test:ui": "vitest --ui"
+}
+```
+
+> 单测/集成文件与源码同目录或就近放（`Foo.tsx` → `Foo.test.tsx`），**不要**塞进 `tests/e2e/`——那是 Playwright 的地盘，也会污染 detect 的 `testDir` 统计。分层判断与目录约定详见 `references/test-pyramid.md`、`references/unit-integration.md`。

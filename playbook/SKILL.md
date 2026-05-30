@@ -1,16 +1,18 @@
 ---
 name: playbook
 description: |
-  Playwright E2E 自动化测试工作流引擎：探测项目栈 → 规划测试用例 → 生成 .spec.ts → 校验稳定性，全程脚本驱动的确定性流程。当用户要给前端项目加 Playwright/E2E 测试、写测试用例、排查 flaky 测试、上 CI、做覆盖率审计时，必须用本 skill 而不是凭经验自由发挥。
-  触发关键词：playwright、E2E、e2e、end-to-end、自动化测试、UI 测试、集成测试、测试覆盖、flaky、storageState、fixture、trace、codegen、playwright.config、testid、page object。
-  不适用：单元测试（Vitest/Jest/Mocha）、组件级隔离测试、移动端原生测试（Appium/Detox）。
+  前端自动化测试全层引擎：掌握单元 / 集成 / E2E 全套方法论，四阶段脚本驱动（探测项目栈 → 规划分层用例 → 生成测试 → 校验稳定性）的确定性流程。当用户要给前端项目加测试、写测试用例、判断该测哪一层、排查 flaky、上 CI、做覆盖率审计、或问"这块怎么测"时，必须用本 skill 而不是凭经验自由发挥。
+  触发关键词：playwright、E2E、e2e、end-to-end、自动化测试、UI 测试、集成测试、单元测试、单测、vitest、jest、testing-library、msw、测试金字塔、测试覆盖、覆盖率、coverage、flaky、storageState、fixture、trace、codegen、playwright.config、testid、page object。
+  不适用：移动端原生测试（Appium/Detox）、性能测试（用 performance-optimizer）。
 ---
 
-# playbook —— Playwright E2E 工作流引擎
+# playbook —— 前端自动化测试全层引擎
 
 ## 角色定位
 
-资深前端测试工程师视角。**流程稳定 > 灵活创新**：每一步用脚本和模板兜底，把"现场判断意图"压到最低。生成的代码评审者看不出是 AI 写的。
+资深前端测试工程师视角，掌握**全套前端自动化测试经验与技巧**，不局限单一项目。**流程稳定 > 灵活创新**：每一步用脚本和模板兜底，把"现场判断意图"压到最低。生成的代码评审者看不出是 AI 写的。
+
+playbook 三位一体：(1) **测试方法论权威**——references 覆盖单元/集成/E2E 全套技巧；(2) **全层执行引擎**——四阶段对单元/集成/E2E 分层分流、自带通用生成；(3) **驱动引擎**——项目有专属测试 skill / 标杆时，由本 skill 的方法论与四阶段驱动它因地制宜生成，无则用通用模板兜底（见末尾「与其他 skill 协作」）。
 
 ## 六条铁律（违反即失败）
 
@@ -34,6 +36,8 @@ project.json    test-plan.md    *.spec.ts      report.md
 每阶段产出一个**确定性工件**到 `.playbook/`，工件存在则跳过该阶段（幂等可重跑）。**不要跳阶段**——上一阶段的工件是下一阶段的输入。
 
 > 幂等的前提是工件没过期。**换了 framework / 包管理器 / UI 库，或升级了 Playwright 后，先 `rm -rf .playbook/` 再重跑**——否则 `project.json` 会停在旧栈，后续决策全基于过期信息。
+>
+> 旧版 `project.json` 若缺 `unitTesting` 字段（全层引擎前生成的），单测/集成规划会读不到单测底座信息，需重跑 detect。
 
 ### 阶段 1：探测（Detect）
 
@@ -53,13 +57,25 @@ bash ~/.claude/skills/playbook/scripts/detect-project.sh > .playbook/project.jso
 
 ### 阶段 2：规划（Plan）
 
-读 `.playbook/project.json` + 用户的测试目标（哪些页面、哪些流程），**第一步先过测试金字塔判断**（详见 `references/architecture.md`）：
+读 `.playbook/project.json` + 用户的测试目标（哪些页面、哪些流程），**第一步先过测试金字塔判断**（分层决策树详见 `references/test-pyramid.md`，E2E 层细节见 `references/architecture.md`）。playbook 是全层引擎，逻辑级/数据流级**不再推回甩手，而是落进分层 backlog 由对应层承接**：
 
-- 流程级目标（登录→下单→支付）→ E2E ✅ 继续
-- 逻辑级目标（金额计算、表单校验）→ ❌ 推回让用户写 unit
-- 单组件级目标（弹窗动画、tooltip）→ ❌ 推回让用户写 component test
+- 流程级目标（登录→下单→支付）→ **E2E** ✅ 走下面四阶段
+- 逻辑级目标（金额计算、表单校验）→ **单元**，进 backlog（见下「分层承接」）
+- 数据流目标（组件→hook→接口→渲染）→ **集成**，进 backlog
+- 单组件视觉细节（弹窗动画、tooltip）→ component / visual-regression
 
-通过金字塔判断后，按下表挑路径，产出 `.playbook/test-plan.md`：
+一次迭代常跨多层，不是三选一。产出的 `.playbook/test-plan.md` 顶部先列**分层 backlog**：
+
+| 被测对象 | 拟定层级 | 理由 | 承接方式 |
+|---|---|---|---|
+| `calcPrice()` | unit | 纯逻辑无 DOM | gen-unit-test unit-pure / 项目标杆 |
+| `useOrderPanel()` | unit(hook) | hook 行为 | gen-unit-test hook |
+| `<OrderList/>` | integration | 组件+数据流 | gen-unit-test component-integration / 项目标杆 |
+| 登录→下单→支付 | e2e | 跨页赚钱路径 | 本 skill 四阶段 + business-dsl |
+
+**分层承接**（阶段 3/4 据此分流）：unit/integration 行 → 若项目有专属测试 skill / 标杆则委托它照标杆生成，否则 `gen-unit-test.sh` 通用模板兜底（底座缺失先 `scaffold-unit.sh`）；e2e 行 → 继续走下面四阶段。
+
+E2E 层按下表挑路径（纯 E2E 任务时 test-plan 退化成与原来一致的结构）：
 
 | 输入条件 | 决策 | 该读 |
 |---|---|---|
@@ -74,11 +90,13 @@ bash ~/.claude/skills/playbook/scripts/detect-project.sh > .playbook/project.jso
 | 用户提到"性能预算"/"bundle 大小"/"a11y 守护" | 架构契约（可选） | `references/contracts.md` |
 | 失败需要后端配合定位 | traceId 串联前后端日志 | `references/observability.md` |
 
-`test-plan.md` 字段固定：**目标 / 金字塔判断 / 用例清单 / 业务动作清单 / 选择器策略 / 数据准备 / Mock 策略 / 是否派 agent**。
+`test-plan.md` 字段固定：**目标 / 分层 backlog / 金字塔判断 / 用例清单 / 业务动作清单 / 选择器策略 / 数据准备 / Mock 策略 / 是否派 agent**（用例清单及之后字段针对 E2E 层；unit/integration 层在 backlog 里标注被测模块路径 + import 即可）。
 
 ### 阶段 3：生成（Generate）
 
-对 `test-plan.md` 中每条用例：
+**先按 backlog 层级分流**：unit/integration 行 → 项目有专属 skill/标杆则委托它照标杆生成，否则 `bash scripts/gen-unit-test.sh --template <unit-pure|hook|component-integration> --out <path> --module <import路径> ...`（`--help` 查全）；e2e 行 → 走下面 Playwright 生成。
+
+对 `test-plan.md` 中每条 **E2E** 用例：
 
 ```bash
 bash ~/.claude/skills/playbook/scripts/gen-test.sh \
@@ -103,6 +121,8 @@ bash ~/.claude/skills/playbook/scripts/gen-test.sh \
 模板里的选择器是占位示例，**gen-test 生成后必须依 `project.json` 的 `uiLib` 字段，对照 `references/selectors.md`「UI 库特定坑」逐处校准**（如 antd 按钮文本走正则、MUI 全走 Role、Modal 用 `getByRole('dialog')` 进作用域）——这一步是模板通用骨架落到具体 UI 库的关键，跳过会生成"看着对、跑起来抓不到元素"的选择器。
 
 ### 阶段 4：校验（Verify）
+
+**按层分流**：unit/integration 用 `bash scripts/validate-unit.sh <test-file>`（静态查 Math.random/真实等待/mock 子组件等单测反模式 + `vitest run --coverage`）；e2e 用下面的 `validate-test.sh`。两者结果统一回流 `.playbook/report.md`，每条标层级。
 
 ```bash
 bash ~/.claude/skills/playbook/scripts/validate-test.sh tests/<file>.spec.ts
@@ -134,10 +154,14 @@ bash ~/.claude/skills/playbook/scripts/validate-test.sh tests/<file>.spec.ts
 
 ## 决策跳转表
 
-**第一次用本 skill，先按序读这 3 篇打底**（其余按需查表）：`architecture.md`（业务 DSL 分层 + 测试金字塔，决定测什么、怎么分层）→ `selectors.md`（选择器优先级，决定怎么定位）→ `assertions.md`（web-first 断言，决定怎么验证）。这三篇是六条铁律的展开，读完即可上手；下表按场景补查。
+**第一次用本 skill，先读 `test-pyramid.md` 定层**（这次该测单元/集成还是 E2E）。判定 E2E 后，再按序读 `architecture.md`（业务 DSL 分层）→ `selectors.md`（选择器优先级）→ `assertions.md`（web-first 断言）这 3 篇 E2E 打底；判定单元/集成则读 `unit-integration.md`。下表按场景补查。
 
 | 当前情景 | 该读 |
 |---|---|
+| 拿到任务先判断该测哪一层（单元/集成/E2E） | `references/test-pyramid.md` |
+| 写单元/集成测试（test.each / renderHook / RTL / Mock 边界） | `references/unit-integration.md` |
+| 测试老挂/改文案就红/越改越脆（防腐） | `references/anti-rot.md` |
+| 测写不出 / 必须 mock 一大坨 / 加载就崩（反推源码） | `references/source-pushback.md` |
 | 不知道项目能不能直接装 Playwright | `references/project-detect.md` |
 | 项目栈对应的搭建配方 | `references/setup-recipes.md` |
 | 用例代码组织 / 业务 DSL 分层 / 测试金字塔判断 | `references/architecture.md` |
@@ -158,11 +182,14 @@ bash ~/.claude/skills/playbook/scripts/validate-test.sh tests/<file>.spec.ts
 
 | 脚本 | 用途 |
 |---|---|
-| `detect-project.sh` | 探测项目栈，输出 JSON |
+| `detect-project.sh` | 探测项目栈（含单测底座 `unitTesting`），输出 JSON |
 | `scaffold.sh` | 按 framework 一键搭建 Playwright 配置 |
-| `gen-test.sh` | 按模板生成 .spec.ts |
-| `validate-test.sh` | 静态 + 动态双检 |
+| `gen-test.sh` | 按模板生成 .spec.ts（E2E） |
+| `validate-test.sh` | E2E 静态 + 动态双检 |
 | `coverage-audit.sh` | 列覆盖维度差距，辅助阶段 4.5 |
+| `scaffold-unit.sh` | 一键搭建 Vitest 单测/集成底座（config + test-utils + msw） |
+| `gen-unit-test.sh` | 按模板生成 .test.ts/.test.tsx（单元/集成） |
+| `validate-unit.sh` | 单测/集成静态 + 动态双检（vitest run --coverage） |
 
 ## 提交前 checklist（强制）
 
@@ -174,12 +201,21 @@ bash ~/.claude/skills/playbook/scripts/validate-test.sh tests/<file>.spec.ts
 - [ ] 选择器全部语义优先级，无 `nth-child`/`xpath`/动态 className
 - [ ] 用例描述不含 `validation/format/util/hover/style` 等 unit/component 该测的关键字
 
+**单元 / 集成层（若 backlog 含该层）**：
+- [ ] 已过 `test-pyramid.md` 分层判断（被测对象确实该落这层，没把逻辑硬塞 E2E）
+- [ ] 跑过 `validate-unit.sh`：无 `Math.random`/真实等待，未 mock 子组件
+- [ ] MSW 在 HTTP 边界拦截，fixture 对齐后端响应形态；快照（若有）< 50 行 + 配显式断言
+- [ ] 覆盖率对照 `test-pyramid.md` 分层门限（关注分支覆盖，非只看行）
+
 ## 触发与边界
 
-**触发**：用户消息含 playwright / E2E / 自动化测试 / UI 测试 / 测试覆盖 / flaky / storageState / fixture / trace / codegen / page object 任一关键词，或要求"给项目加测试"。
+**触发**：用户消息含 playwright / E2E / 自动化测试 / UI 测试 / 单元测试 / 单测 / 集成测试 / vitest / jest / testing-library / msw / 测试金字塔 / 测试覆盖 / 覆盖率 / flaky / storageState / fixture / trace / codegen / page object 任一关键词，或要求"给项目加测试"、问"这块怎么测"。
+
+**承接范围**：
+- 单元测试（Vitest/Jest）+ 集成测试（Testing Library + MSW）→ 本 skill 给方法论 + 分层判断 + 通用生成；项目有专属 skill/标杆则驱动它因地制宜生成
+- E2E（Playwright）→ 四阶段全流程
 
 **不适用**：
-- 单元测试（Vitest/Jest/Mocha）→ 让用户自己写或用其他 skill
 - 组件级隔离测试（Storybook play / Cypress component）
 - 移动端原生（Appium / Detox）
 - 性能测试（用 `performance-optimizer` skill）
@@ -187,6 +223,11 @@ bash ~/.claude/skills/playbook/scripts/validate-test.sh tests/<file>.spec.ts
 
 ## 与其他 skill 的协作
 
+**驱动协议（playbook 是上游引擎）**：playbook 提供测试方法论 + 四阶段 + 分层判断；项目级全层测试生成 skill（如某项目的 `generate-tests`）是 playbook 驱动下、在具体技术栈因地制宜的专属下游——它照本项目的测试标杆 / `test-utils` 基建生成单元/集成测试，并把 E2E 委托回 playbook。二者通过金字塔分层与 `.playbook/` 四阶段工件解耦：
+- **项目有专属测试 skill / 标杆** → 阶段 3 的 unit/integration 行委托它照标杆生成（命名、打桩风格贴合项目），playbook 只给方法论与层级判断。
+- **裸项目（无专属 skill）** → playbook 用 `gen-unit-test.sh` 通用模板兜底，`scaffold-unit.sh` 搭底座，任何项目都能直接被驱动生成全层测试。
+
+其他协作：
 - `webapp-testing`：阶段 4 校验失败时，调用它跑 dev server 抓页面状态
 - `dispatching-parallel-agents`：阶段 4.5 派 agent 时遵循其方法论
 - `verify` / `run`：用户需要手动看效果时调用

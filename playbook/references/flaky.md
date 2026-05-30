@@ -92,3 +92,17 @@ for i in {1..10}; do npx playwright test <file> --reporter=line || break; done
 ```
 
 10 次全过才算修好。
+
+## 单测 / 集成层 flaky（Vitest/Jest + RTL）
+
+单测确定性强，flaky 几乎只来自三个源（确定性三角见 `unit-integration.md`）：
+
+| 症状 | 解 |
+|---|---|
+| 用 `setTimeout`/`sleep` 等异步完成 | `vi.useFakeTimers()` + `vi.advanceTimersByTime(ms)`，确定性快进，不靠真实时钟 |
+| `getBy*` 抢在异步渲染前断言 | 改 `await screen.findBy*` / `await waitFor(...)`，自带轮询 |
+| 漏 `await` 导致断言跑在 promise 之前 | 所有 user 操作、findBy、waitFor **一律 await** |
+| `Math.random` / `Date.now` 进了断言路径 | mock 掉（`vi.setSystemTime` / 注入固定种子），否则输出不确定 |
+| 用例间状态泄漏（MSW handler、全局 store） | `afterEach` 里 `server.resetHandlers()` + 重置 store；副作用别放 `beforeAll` |
+
+**别用加长 `waitFor` timeout 来"治"flaky**——那是掩盖问题。验证：`vitest run --repeat=10 <file>` 连跑 10 次全绿。

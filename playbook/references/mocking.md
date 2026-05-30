@@ -101,6 +101,40 @@ src/mocks/handlers.ts        ← 单一数据源
        └──→ E2E（Node setupServer 或 Service Worker）
 ```
 
+### MSW 在 Vitest 的完整 setupServer 配方
+
+单测/集成层用 `msw/node` 的 `setupServer`，生命周期统一在 setup 文件接管（见 `references/setup-recipes.md` 的 `test-utils/setup.ts`）：
+
+```ts
+// test-utils/server.ts —— 单一数据源
+import { setupServer } from 'msw/node';
+import { handlers } from '../mocks/handlers';
+export const server = setupServer(...handlers);
+
+// test-utils/setup.ts —— 全局生命周期（vitest.config 的 setupFiles 引它）
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));  // 漏 mock 的请求直接报错，别静默放过
+afterEach(() => server.resetHandlers());   // 关键：每个用例后重置，避免用例间污染
+afterAll(() => server.close());
+```
+
+用例里用 `server.use()` **动态覆盖** handler 测异常路径——这是高价值用例：
+
+```ts
+it('接口 500 时显示加载失败', async () => {
+  server.use(http.get('/api/orders', () => HttpResponse.json(null, { status: 500 })));
+  render(<OrderList />);
+  expect(await screen.findByText('加载失败')).toBeInTheDocument();
+});
+
+it('网络断开时显示重试', async () => {
+  server.use(http.get('/api/orders', () => HttpResponse.error()));
+  render(<OrderList />);
+  expect(await screen.findByRole('button', { name: '重试' })).toBeInTheDocument();
+});
+```
+
+`onUnhandledRequest: 'error'` + `resetHandlers` 是两个最容易漏的点：前者让"忘了 mock"立刻暴露，后者防止上一个用例的 `server.use` 泄漏到下一个。集成测试写法详见 `references/unit-integration.md`。
+
 ## 第 4 层：HAR 录制回放（复杂状态机）
 
 多接口、多状态、时序敏感的流程（订单状态流转、支付回调），手写 mock 容易漏时序。**HAR 录制 = 真实交互拷贝一份当契约**：

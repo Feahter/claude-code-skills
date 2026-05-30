@@ -44,6 +44,23 @@
 
 读不到 → 翻 `package.json` 的 scripts.dev / scripts.start 找端口。
 
+## 单测底座（unitTesting）人工探测清单
+
+脚本失效时，单测/集成层的承接判断靠这几项手动填 `project.json.unitTesting`：
+
+| 字段 | 怎么判 |
+|---|---|
+| `hasVitest` / `hasJest` | deps/devDeps 含 `vitest` / `jest` |
+| `unitRunner` | 同时有则 vitest 优先；都没有填 `none` |
+| `unitConfigPath` | glob `vitest.config.{ts,js,mts,mjs}` / `jest.config.{ts,js,cjs,mjs}`；都没有但 `package.json` 有 `"jest"` 键 → `package.json#jest` |
+| `hasTestingLibrary` / `testingLibFlavor` | deps 含 `@testing-library/react`(react) / `/vue`(vue) / `/dom`(dom) |
+| `hasMSW` | deps 含 `msw` |
+| `mswHandlersPath` | 看 `src/mocks/handlers.{ts,js}` / `mocks/handlers.{ts,js}` 是否存在（MSW 单一数据源） |
+| `unitTestDir` | 找含 `*.test.{ts,tsx}` 的目录，**排除 E2E 目录**，优先 `src` |
+| `coverageThresholdsConfigured` | config 内有 `thresholds` / `coverageThreshold` |
+
+这些值决定阶段 2 的分层 backlog 怎么承接：`unitRunner === none` 说明项目还没单测底座，规划单测/集成前先 `scaffold-unit.sh` 搭建。
+
 ## 兜底输出
 
 判不出来就先填 `unknown`，然后停下问用户。**不要瞎猜**——错误的探测结果会让阶段 2 决策也错。

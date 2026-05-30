@@ -1,0 +1,23 @@
+import { describe, it, expect } from 'vitest';
+import { __IMPORT_NAME__ } from '__MODULE_PATH__';
+
+// 纯逻辑单测：列输入代表点（正常 + 边界临界 + 异常），逐点精确值断言。
+// ⚠️ 测行为不测实现：只断输入→输出，别断内部变量 / 调用次数。详见 references/unit-integration.md
+describe('__TEST_NAME__', () => {
+  // TODO: 把下表每行填成一个需求点 [输入..., 期望]。表格即需求文档，失败时一眼看出是哪条契约挂了。
+  it.each([
+    { input: 0,   expected: 0,   desc: '零值' },
+    { input: 100, expected: 100, desc: '正常值' },
+    // 边界临界：各业务区间的分界点
+    // { input: ___, expected: ___, desc: '区间临界' },
+    // 异常优先（正常 30% / 异常 70%）：非法格式 / 越界 / null，验证返回兜底值而非抛出
+    // { input: NaN, expected: ___, desc: '非法输入兜底' },
+  ])('__IMPORT_NAME__($desc): $input → $expected', ({ input, expected }) => {
+    expect(__IMPORT_NAME__(input)).toBe(expected);
+  });
+
+  // 浮点运算用 toBeCloseTo，不用 toBe（精度误差）
+  // it('浮点结果', () => {
+  //   expect(__IMPORT_NAME__(99.99)).toBeCloseTo(100.0, 2);
+  // });
+});

@@ -130,3 +130,31 @@ strategy:
 ```
 
 让所有 shard 跑完，能更全面看失败模式（是单点还是普遍问题）。
+
+## 分层门禁：单测 / 集成 / E2E 三档
+
+上面是 E2E 的分片。全层项目里 CI 按金字塔分三档，**快的先跑、阻断逻辑分级**，失败快速止损：
+
+```yaml
+# 1. 单元测试（< 30s）—— 失败立即阻断，最先跑
+- name: Unit Tests
+  run: pnpm exec vitest run --reporter=dot
+
+# 2. 集成测试（< 2min）—— 失败阻断合并
+- name: Integration Tests
+  run: pnpm exec vitest run --config vitest.integration.config.ts
+
+# 3. E2E（上面的分片 job）—— 失败阻断合并
+
+# 4. 视觉回归（< 5min）—— 仅告警，不阻断
+- name: Visual Regression
+  run: pnpm exec chromatic --exit-zero-on-changes
+```
+
+原则：
+
+- **单测 + 集成并行跑，别串行**（互不依赖，串行白白拉长）。
+- 覆盖率不做硬性全局红线，但**下降超过阈值（如 > 2%）才 fail**——避免删无用代码也卡流程。门限分层目标见 `references/test-pyramid.md`。
+- 本地 pre-commit 用 `lint-staged` 只跑变更文件的单测（`vitest related`），把快反馈留在本地，全量留给 CI。
+
+> E2E 用例数 ≥ 5 才上分片；单测/集成跑得快，靠并行而非分片。

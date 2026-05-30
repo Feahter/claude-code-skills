@@ -55,6 +55,8 @@ POM 是"为了组织复杂页面"的工具，不是"为了显得专业"。简单
 
 ## 测试金字塔：E2E 该测什么
 
+> 全层分层决策树（逻辑级/数据流/流程级怎么判、各层覆盖率门限）详见 `references/test-pyramid.md`。本节只讲金字塔顶层——E2E 该测什么。
+
 ```
         E2E (10%)      只测核心赚钱路径 + 高风险链路
       Integration (20%)
@@ -87,14 +89,17 @@ POM 是"为了组织复杂页面"的工具，不是"为了显得专业"。简单
 - `hover` / `style` / `color` —— 单组件视觉类
 - `boundary case` / `edge case` —— 边界穷举类
 
-## 阶段 2 规划时的金字塔判断
+## 阶段 2 规划时的金字塔判断（产出分层 backlog）
 
-写 `test-plan.md` 前先过一遍：
+写 `test-plan.md` 前先过一遍。playbook 是全层引擎——逻辑级/单组件级**不再"推回"甩手，而是落进分层 backlog 由对应层承接**：
 
-1. 用户的目标是流程级（登录→下单→支付）→ E2E
-2. 用户的目标是逻辑级（金额计算、表单校验）→ 推回让用户写 unit
-3. 用户的目标是单组件级（弹窗动画、tooltip）→ 推回让用户写 component test
-4. 拿不准：问"这个 bug 上线后用户报障会怎么描述？"——能描述出业务影响才是 E2E 该测的
+1. 流程级（登录→下单→支付）→ **E2E**：本 skill 四阶段 + 模板生成
+2. 逻辑级（金额计算、表单校验）→ **单元**：进 backlog，按 `references/unit-integration.md` 承接（项目有专属测试 skill / 标杆则照标杆，否则 `gen-unit-test.sh` 通用模板兜底）
+3. 数据流（组件→hook→接口→渲染）→ **集成**：同上，走 component-integration 路径
+4. 单组件视觉细节（弹窗动画、tooltip）→ component/visual-regression
+5. 拿不准：问"这个 bug 上线后用户报障会怎么描述？"——能描述出业务影响才是 E2E 该测的；描述不出的逻辑错下沉单元
+
+`test-plan.md` 据此产出**分层 backlog**（被测对象 / 拟定层级 / 理由 / 承接方式），一次迭代常跨多层，不是三选一。分层判断细节见 `references/test-pyramid.md`。
 
 ## 业务 DSL 命名规范
 

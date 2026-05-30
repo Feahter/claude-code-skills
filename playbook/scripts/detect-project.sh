@@ -24,6 +24,9 @@ detect-project.sh —— 探测前端项目栈
   baseURL          string|null
   existingSelectors {testid,role,css}  各类选择器在已有 spec 里的出现次数
   uiLib            antd | mui | shadcn | element-plus | naive-ui | vuetify | tailwind | unknown
+  unitTesting      单测底座 {hasVitest,hasJest,unitRunner,unitConfigPath,
+                   hasTestingLibrary,testingLibFlavor,hasMSW,mswHandlersPath,
+                   unitTestDir,coverageThresholdsConfigured}
 
 依赖: jq
 退出码: 0 成功；2 缺 jq；3 不是项目目录（找不到 package.json）
@@ -115,9 +118,9 @@ TESTID_CNT=0; ROLE_CNT=0; CSS_CNT=0
 if [[ "$TEST_DIR" != "null" ]]; then
   TD_RAW=$(echo "$TEST_DIR" | tr -d '"')
   if [[ -d "$CWD/$TD_RAW" ]]; then
-    TESTID_CNT=$(grep -rE 'getByTestId|data-testid' "$CWD/$TD_RAW" 2>/dev/null | wc -l | tr -d ' ' || echo 0)
-    ROLE_CNT=$(grep -rE 'getByRole|getByLabel|getByText' "$CWD/$TD_RAW" 2>/dev/null | wc -l | tr -d ' ' || echo 0)
-    CSS_CNT=$(grep -rE "page\.locator\(['\"]\\.|nth-child|xpath=" "$CWD/$TD_RAW" 2>/dev/null | wc -l | tr -d ' ' || echo 0)
+    TESTID_CNT=$({ grep -rE 'getByTestId|data-testid' "$CWD/$TD_RAW" 2>/dev/null || true; } | wc -l | tr -d ' ')
+    ROLE_CNT=$({ grep -rE 'getByRole|getByLabel|getByText' "$CWD/$TD_RAW" 2>/dev/null || true; } | wc -l | tr -d ' ')
+    CSS_CNT=$({ grep -rE "page\.locator\(['\"]\\.|nth-child|xpath=" "$CWD/$TD_RAW" 2>/dev/null || true; } | wc -l | tr -d ' ')
   fi
 fi
 
@@ -142,6 +145,60 @@ if [[ "$UI" == "unknown" ]] && [[ -d "$CWD/components/ui" || -f "$CWD/components
   UI="shadcn"
 fi
 
+# --- 单测底座（unitTesting）：探测 vitest/jest + RTL + msw，给规划阶段判断分层承接 ---
+HAS_VITEST="false"; HAS_JEST="false"
+echo ",$DEPS," | grep -q ",vitest," && HAS_VITEST="true"
+echo ",$DEPS," | grep -q ",jest," && HAS_JEST="true"
+UNIT_RUNNER="none"
+[[ "$HAS_JEST" == "true" ]] && UNIT_RUNNER="jest"
+[[ "$HAS_VITEST" == "true" ]] && UNIT_RUNNER="vitest"
+
+UNIT_CONFIG="null"
+for f in vitest.config.ts vitest.config.js vitest.config.mts vitest.config.mjs \
+         jest.config.ts jest.config.js jest.config.cjs jest.config.mjs; do
+  if [[ -f "$CWD/$f" ]]; then UNIT_CONFIG="\"$f\""; break; fi
+done
+# package.json 内联 jest 配置兜底
+if [[ "$UNIT_CONFIG" == "null" ]] && jq -e '.jest' "$PKG" >/dev/null 2>&1; then
+  UNIT_CONFIG='"package.json#jest"'
+fi
+
+HAS_TL="false"; TL_FLAVOR="none"
+if echo ",$DEPS," | grep -q ",@testing-library/react,"; then HAS_TL="true"; TL_FLAVOR="react"
+elif echo ",$DEPS," | grep -q ",@testing-library/vue,"; then HAS_TL="true"; TL_FLAVOR="vue"
+elif echo ",$DEPS," | grep -q ",@testing-library/dom,"; then HAS_TL="true"; TL_FLAVOR="dom"
+fi
+
+HAS_MSW="false"
+echo ",$DEPS," | grep -q ",msw," && HAS_MSW="true"
+
+MSW_HANDLERS="null"
+for f in src/mocks/handlers.ts src/mocks/handlers.js mocks/handlers.ts mocks/handlers.js \
+         src/test-utils/msw/handlers.ts src/test-utils/msw/handlers.js \
+         src/test-utils/handlers.ts src/test-utils/handlers.js; do
+  if [[ -f "$CWD/$f" ]]; then MSW_HANDLERS="\"$f\""; break; fi
+done
+
+# 单测目录：找含 *.test.ts(x) 的目录，排除 E2E 目录，优先 src
+UNIT_TEST_DIR="null"
+for d in src tests/unit test tests; do
+  if [[ -d "$CWD/$d" ]]; then
+    if find "$CWD/$d" -maxdepth 4 -path '*/e2e/*' -prune -o \
+         \( -name '*.test.ts' -o -name '*.test.tsx' \) -print 2>/dev/null | head -1 | grep -q .; then
+      UNIT_TEST_DIR="\"$d\""; break
+    fi
+  fi
+done
+
+# 覆盖率门限是否已配（供规划阶段判断要不要对照门限表）
+COV_THRESH="false"
+if [[ "$UNIT_CONFIG" != "null" && "$UNIT_CONFIG" != '"package.json#jest"' ]]; then
+  UC_RAW=$(echo "$UNIT_CONFIG" | tr -d '"')
+  grep -qE "thresholds|coverageThreshold" "$CWD/$UC_RAW" 2>/dev/null && COV_THRESH="true"
+elif jq -e '.jest.coverageThreshold' "$PKG" >/dev/null 2>&1; then
+  COV_THRESH="true"
+fi
+
 # --- 输出 JSON ---
 jq -n \
   --arg fw "$FW" \
@@ -155,6 +212,16 @@ jq -n \
   --argjson roleCnt "$ROLE_CNT" \
   --argjson cssCnt "$CSS_CNT" \
   --arg ui "$UI" \
+  --argjson hasVitest "$HAS_VITEST" \
+  --argjson hasJest "$HAS_JEST" \
+  --arg unitRunner "$UNIT_RUNNER" \
+  --argjson unitConfigPath "$UNIT_CONFIG" \
+  --argjson hasTL "$HAS_TL" \
+  --arg tlFlavor "$TL_FLAVOR" \
+  --argjson hasMSW "$HAS_MSW" \
+  --argjson mswHandlers "$MSW_HANDLERS" \
+  --argjson unitTestDir "$UNIT_TEST_DIR" \
+  --argjson covThresh "$COV_THRESH" \
 '{
   framework: $fw,
   language: $lang,
@@ -164,5 +231,17 @@ jq -n \
   testDir: $testDir,
   baseURL: $baseURL,
   existingSelectors: { testid: $testidCnt, role: $roleCnt, css: $cssCnt },
-  uiLib: $ui
+  uiLib: $ui,
+  unitTesting: {
+    hasVitest: $hasVitest,
+    hasJest: $hasJest,
+    unitRunner: $unitRunner,
+    unitConfigPath: $unitConfigPath,
+    hasTestingLibrary: $hasTL,
+    testingLibFlavor: $tlFlavor,
+    hasMSW: $hasMSW,
+    mswHandlersPath: $mswHandlers,
+    unitTestDir: $unitTestDir,
+    coverageThresholdsConfigured: $covThresh
+  }
 }'

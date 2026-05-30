@@ -1,0 +1,29 @@
+import { describe, it, expect } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+import { __IMPORT_NAME__ } from '__MODULE_PATH__';
+
+// Hook 单测：renderHook 渲染 → act 包裹状态变更 → 断 result.current。
+// ⚠️ 断状态变化（result.current），不断 DOM；状态更新必须包在 act 里，否则 React 警告 + 状态不反映。
+describe('__TEST_NAME__', () => {
+  it('初始状态正确', () => {
+    const { result } = renderHook(() => __IMPORT_NAME__());
+    // TODO: 断言初始值
+    // expect(result.current.value).toBe(__初始值__);
+  });
+
+  it('调用动作后状态更新', () => {
+    const { result } = renderHook(() => __IMPORT_NAME__());
+    // TODO: 触发 hook 暴露的动作，断言状态变化
+    // act(() => { result.current.someAction(); });
+    // expect(result.current.value).toBe(__更新后__);
+  });
+
+  // 依赖外部输入的 hook：用 rerender 验证响应 props 变化
+  // it('入参变化时重算', () => {
+  //   const { result, rerender } = renderHook(({ n }) => __IMPORT_NAME__(n), {
+  //     initialProps: { n: 1 },
+  //   });
+  //   rerender({ n: 2 });
+  //   expect(result.current).toBe(__新结果__);
+  // });
+});
