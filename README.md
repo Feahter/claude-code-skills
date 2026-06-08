@@ -28,6 +28,7 @@ cp -R <skill-name> ~/.claude/skills/
 | [prompt-optimizer](./prompt-optimizer) | 优化 prompt 文本（Claude Code 资产或 API 调用），诊断 skill / CLAUDE.md / agent prompt 未生效问题 |
 | [metacognition-recall](./metacognition-recall) | 按需从项目记忆库语义召回与当前任务相关的技术事实、偏差、历史决策 |
 | [metacognition-reflect](./metacognition-reflect) | 对当前会话做元认知复盘，把关键判断 / 纠正 / 验证事件结构化入队并合并到记忆库 |
+| [cr-master](./cr-master) | 资深工程师视角审查本地 git 变更（工作区 / 暂存区 / commit / 分支对比），P0-P3 分级输出 SOLID / 安全 / 竞态 / 错误处理 / 性能 / 边界条件中文报告 |
 
 ## 额外依赖
 
