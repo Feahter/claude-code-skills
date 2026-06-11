@@ -29,6 +29,8 @@ cp -R <skill-name> ~/.claude/skills/
 | [metacognition-recall](./metacognition-recall) | 按需从项目记忆库语义召回与当前任务相关的技术事实、偏差、历史决策 |
 | [metacognition-reflect](./metacognition-reflect) | 对当前会话做元认知复盘，把关键判断 / 纠正 / 验证事件结构化入队并合并到记忆库 |
 | [cr-master](./cr-master) | 资深工程师视角审查本地 git 变更（工作区 / 暂存区 / commit / 分支对比），P0-P3 分级输出 SOLID / 安全 / 竞态 / 错误处理 / 性能 / 边界条件中文报告 |
+| [rxjs-master](./rxjs-master) | RxJS / Observable 响应式编程专家：操作符选型、订阅管理与内存泄漏、错误处理与重试、marble 测试、性能调优、Promise 互转、Angular Signals / React hooks 互操作 |
+| [code-to-product-knowledge](./code-to-product-knowledge) | 从代码逻辑反向沉淀产品认知文档，产出 know-what 风格的产品行为 / 规则 / 边界 / 设计意图，代码读不出的盲区停下来逆问用户 |
 
 ## 额外依赖
 
