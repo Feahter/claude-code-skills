@@ -1,266 +1,359 @@
 ---
 name: auto-orchestrate
-description: 把"跨多文件的代码实现任务"自动拆解、分发、收口，串起 writing-plans / dispatching-parallel-agents / subagent-driven-development / using-git-worktrees / finishing-a-development-branch。只处理以代码变更为主要产出、且跨 3+ 文件或多步的任务。触发：用户说"实现/做/改造/重构/接入/迁移 XX"或"auto/自动编排/orchestrate/走一整套开发流程"。不适用：方案讨论、架构评估、bug 排查、代码审查、写文档/PPT、单文件单行改动、查数据查埋点。任务触及特定领域时优先用领域 skill（业务数据表格→<domain-feature>、接新链/新平台→<chain-integration>、Figma 还原→<figma-skill>），本 skill 作上层编排器调下游。
+description: >
+  多任务编排：独立lane并行，依赖同lane串行，审查后集成。
+  触发：自动编排、orchestrate。
 ---
 
 # Auto Orchestrate
 
-## 这个 skill 是干什么的
+你是实现任务的父编排器。你的职责是建立可验证的执行边界，维护 lane 和证据，把经过审查的提交组合到临时 integration 分支；你不自动把结果合入用户目标分支。
 
-你是任务编排器。当用户抛过来一个"跨多文件、多步实现"的代码任务时，你的职责是**拆分、分发、收口**——不亲自写业务代码（除了收口级别的少量胶水）。
+开工先声明："我在用 auto-orchestrate 编排本次任务。"
 
-底层已经有一批现成的 superpowers skill 覆盖规划、worktree 隔离、并行派发、合并收尾。你要做的是按一个固定流水线把它们串起来，避免重复造轮子。
+## 不可违反的契约
 
-**开工先告诉用户：** "我在用 auto-orchestrate 编排本次任务。"
+1. 小型连续任务由主会话直接完成，不为流程而拆分。
+2. 完整编排至少需要两个边界清楚的实现或文档工作单元。
+3. 有依赖关系或可能修改同一文件的任务必须在同一 lane 串行执行。
+4. 只有互相独立、文件所有权不重叠的 lane 才能并行。
+5. `explore` 永远只读；独立文档修改只能交给 `docs` 或 `self`。
+6. 每个 `craft` 任务必须有任务分支提交、diff package、独立审查和验证证据。
+7. 子 Agent 不得继续派生 Agent。
+8. 同时运行最多 4 个 Agent；整个顶层任务累计最多 8 个 Agent 调用，含实现、审查和 integration 修复。
+9. 不 push，不自动合入用户目标分支，不删除用户已有 worktree，不执行破坏性 git 操作。
+10. 任何未验证项都写入 `results.md`，不得用推测代替证据。
 
----
+## 阶段总览
 
-## 进入流程前：任务类型判定
-
-不是每个请求都适合走这条流水线。在做任何事之前，先回答一个问题：
-
-> **本次任务是否以"代码/配置/脚本变更"为主要产出？**
-
-如果是——继续下面的流程。
-如果不是或拿不准——**停下来问用户**，不要硬套。问法参考：
-
-> 我拿不准这个任务主要产出是代码还是文档/方案/数据。如果是要跨多文件落代码，我走 auto-orchestrate 流程；否则我直接处理或转给合适的 skill。你想要哪种？
-
-为什么要问：硬套流水线会导致写 PPT、查数据、讨论方案这类任务被错误地开 worktree、派 Agent，浪费资源还污染 git 状态。
-
-### 明显不适用的情况（直接退出本 skill，转去对应路径）
-
-| 任务 | 该用什么 |
-|---|---|
-| 方案讨论 / 架构评估 / 技术选型 | `think-rigorously` 或直接回答 |
-| 写 / 改 PPT、README、博客、PRD | `ppt-engineering` / `to-prd` / 直接写 |
-| 线上 bug 根因排查（不落代码） | `diagnose` |
-| 代码审查 | `code-review-expert` / `review-mr` |
-| 查埋点 / 查交易 / 查日志 | 对应 `investigate-*` skill |
-| 单文件单函数小改 / 一行 fix | 不用流水线，直接做 |
-| Figma 还原单组件 | `<figma-skill>` |
-
-### 边界情况的判法
-
-- **"实现一个功能 + 顺便写文档"**：代码为主 → 走本流程，文档当其中一个子任务
-- **"先写设计文档再实现"**：拆两段，当前只写文档 → 退出本 skill；等用户下次说"开始实现"再进
-- **"先排查 + 再修复"**：排查阶段用 `diagnose`；修复若跨多文件再进本流程
-
-判定通过才进入四阶段流水线。
-
----
-
-## 四阶段流水线
-
-```
-阶段 0 规模判定 → 阶段 1 规划 → 阶段 2 分发 → 阶段 3 收口
-    (Gate)        (plan.md)    (worktree+Agent)  (用户拍板合入)
+```text
+0 入口与规模门槛
+  -> 1 侦察、计划、授权
+  -> 2 lane 执行、提交、独立审查
+  -> 3 integration 汇入、组合验证、集中修复
+  -> 4 结果与用户决策
 ```
 
----
+## 阶段 0：入口与规模门槛
 
-## 阶段 0：规模判定
+### 0.1 任务类型
 
-流水线不是越复杂越好。**小任务别开大火**——3 个文件的修改主会话直接做最快。
+主要产物必须是代码、配置、脚本或与实现绑定的文档变更。
 
-读完需求后回答四个问题：
+以下任务退出本 skill，转由主会话或对应 skill：
 
-1. 预计触及文件数：<3 / 3-10 / >10？
-2. 是否改共享逻辑（state / hooks / utils / api 层）？
-3. 是否跨 feature（同时改 2+ `src/features/*`）？
-4. 风险等级（参考全局 CLAUDE.md）：LOW / MEDIUM / HIGH / CRITICAL？
+- 方案讨论、架构评估、技术选型。
+- 只读排查、代码审查、数据查询。
+- 纯 PPT、PRD、博客或独立写作。
+- 一个连续意图、由主会话安全完成的小改。
 
-### 根据判定走分支
+用户明确要求 `auto-orchestrate` 也不能跳过规模门槛；应说明退出原因并直接处理小任务。
 
-| 情况 | 动作 |
-|---|---|
-| 单步 / 纯新增 1-2 文件 | **退出流水线**，直接做 |
-| 多步纯新增 + LOW 风险 | 走阶段 1-3，**阶段 2 默认不开 worktree** |
-| 改共享逻辑 / 跨 feature / MEDIUM+ 风险 | 走阶段 1-3，阶段 2 **强制 worktree** |
-| CRITICAL（删代码 / 改认证 / 支付 / 链上） | **先停，让用户确认再进阶段 1** |
+### 0.2 完整编排门槛
 
-判定结果**显式告诉用户**："我判断这是 X 规模，风险 Y，计划走 Z 路径。有异议现在说。" 用户不反对再往下。
+先读项目指令并做最小必要侦察，然后判断：
 
-为什么要显式说：规模判定决定后面所有动作的成本。用户一眼看到判定就能拦错路线。
+- 是否至少有两个边界清楚、可分别验收的工作单元？
+- 每个单元能否声明文件所有权、依赖、风险和验证方法？
+- 是否存在至少一组可并行 lane，或串行 lane 的隔离、逐任务审查和 integration 证据确有价值？
 
----
+若只有一个连续实现，或拆分只会制造交接成本，退出完整编排，由主会话执行。
 
-## 阶段 1：规划
+### 0.3 初始风险
 
-### 1.1 定 task-id 和产物目录
+把任务标为 `LOW | MEDIUM | HIGH | CRITICAL`。认证、授权、支付、链上、密钥、敏感数据、破坏性删除和不可逆迁移通常是 CRITICAL。
 
-按项目 CLAUDE.md 的规则：
+CRITICAL 必须先取得入口确认，确认文本要包含范围、风险、回滚思路和完整回归要求。未确认不得创建分支、worktree 或修改文件。
 
-- 有 Jira 单号 → 用单号（`PROJ-1234`）
-- 有明确功能名 → 短横线连接（`token-search-redesign`）
-- 都没有 → `YYYY-MM-DD-<topic>`
+向用户报告门槛结论、风险和拟采用的路径。
 
-产物一律进 `.workflow/<task-id>/`。
+## 阶段 1：侦察、计划、授权
 
-### 1.2 要不要先 brainstorming
+### 1.1 task-id 与产物
 
-- 新功能 / 有设计空间 / 需求模糊 → **先调 `brainstorming`**，产物 `spec.md`
-- 已有明确需求 / bug fix / 改造已有模块 → 跳过
+task-id 优先级：
 
-### 1.3 写 plan
+1. 工单号。
+2. 简短功能名。
+3. `YYYY-MM-DD-<topic>`。
 
-**调 `writing-plans`**，产出 `.workflow/<task-id>/plan.md`。
+持久化目录为 `.workflow/<task-id>/`：
 
-plan 里每个子任务**必须**在标题旁打三个标签，因为后面派发要按它们做决策：
+- `context.md`：需求事实、项目约束、调用关系、API 查证和验证入口。
+- `plan.md`：任务、lane、依赖、所有权和授权范围。
+- `ledger.md`：运行进度和恢复点。
+- `results.md`：提交、审查、验证和未验证项。
 
-```
-### Task 3: 抽取共享 hook useTokenFilter  [deps: Task 1] [isolate: yes] [agent: implementer]
-```
+这些文件是上下文压缩后的恢复依据，不用聊天记忆代替。
 
-- `deps`: `none` 或 `Task N, Task M`
-- `isolate: yes / no`
-  - `yes` 的判定：改动 ≥3 文件 **或** 动共享逻辑 **或** 和其它子任务有潜在冲突
-  - `no`：主会话直接做
-- `agent: implementer / explore / self`
-  - `implementer`：标准实现 agent，用 subagent-driven-development 的 implementer-prompt
-  - `explore`：只调研不改代码
-  - `self`：编排器自己做，只用于 LOW 风险的胶水收口
+### 1.2 事实侦察
 
-### 1.4 plan 写完必须让用户过目
+- 代码关系与影响面可使用 graph 索引；任何用于拆分或编辑的结论必须以当前源码或 LSP 复核。
+- 涉及第三方库、SDK、CLI 或云 API 时，查当前文档，记录版本和关键契约。
+- 从项目指令、CI、构建文件、包管理配置和测试目录探测验证命令。
+- 记录可能共享的文件、生成物、schema、锁文件和公共接口；这些都影响 lane 分配。
 
-```
-plan 已写到 .workflow/<task-id>/plan.md，请过目。
-有问题现在改，没问题我开始派发。
-```
+### 1.3 plan.md 标签
 
-为什么这一步不能省：plan 一旦进入阶段 2，worktree 和分支会被真实创建，错路上的回滚成本远高于多问一次。
-
----
-
-## 阶段 2：分发执行
-
-### 2.1 把 plan 排成 DAG
-
-根据 `deps` 字段：
-
-- 同层独立任务 → **一条消息里多个 `Agent` 并行**
-- 有依赖 → 串行，前置完成再派后续
-
-这部分参考 `dispatching-parallel-agents` 的 prompt 规范。
-
-### 2.2 开 worktree 的子任务
-
-对 `isolate: yes` 的子任务，调 `Agent` 工具时带 `isolation: "worktree"`。worktree 的目录选址、gitignore 校验、baseline 测试由底层 `using-git-worktrees` skill 处理，编排器不自己写这些逻辑。
-
-Agent 返回后把 **worktree 路径 + 分支名 + 改动摘要** 记到 `.workflow/<task-id>/results.md`。
-
-### 2.3 Agent prompt 要自包含
-
-子 Agent 看不到本会话的任何上下文。它需要什么，prompt 里就要有什么：
-
-```
-你的任务：<Task N 完整描述>
-
-必要背景：
-- 项目入口：CLAUDE.md
-- 相关已有代码：<2-5 个关键文件路径 + 作用说明>
-- 在整体计划中的位置：Task N / 共 M 个，前置 Task X 的产物是 <简述>
-
-约束：
-- 严格遵守项目 CLAUDE.md 和全局 CLAUDE.md 的编码规范
-- 只改本任务相关的文件，不顺手清理无关代码
-- 不碰 git（commit / push / merge 留给编排器和用户）
-- 完成后返回：改动文件清单 + 一句话摘要 + 偏离点
-
-<带 isolation: worktree 时会自动在 worktree 里执行，不用额外说明>
-```
-
-### 2.4 并行纪律
-
-一条消息里只能并行**互相独立**的 Agent。两个 Agent 可能改同一文件——**plan 阶段就得拆开**，不要指望 worktree 合并时再处理，那时冲突成本高得多。
-
-### 2.5 Agent 返回异常的处理
-
-| 情况 | 处理 |
-|---|---|
-| 信息缺失（NEEDS_CONTEXT） | 编排器补上下文后重新派 |
-| 任务方向偏了 | **停下问用户**，不要在错路上接着派下一个 |
-| 跨任务耦合发现得太晚 | 回阶段 1 改 plan |
-
-为什么不强行重试：Agent BLOCKED 一定是某个前置判断错了，盲目重试只会把同样的错误再做一次。
-
----
-
-## 阶段 3：收口
-
-### 3.1 写 results.md
+每个任务标题必须包含且只使用以下编排标签：
 
 ```markdown
-# <task-id> 执行结果
-
-## 子任务完成情况
-- Task 1: [worktree: .worktrees/xxx, branch: feature/xxx] 改动摘要...
-- Task 2: [主会话, commit: <sha>] 改动摘要...
-
-## 总体改动
-- 新增文件：...
-- 修改文件：...
-- 风险点 / 待验证：...
-
-## 待用户决策
-- 多个 worktree 分支的合并顺序？
-- 是否需要跨 worktree 的集成测试？
+### Task 2: Add repository adapter
+[deps: Task 1] [owner: craft] [lane: data] [isolate: yes] [risk: MEDIUM]
 ```
 
-### 3.2 聚合级验证
+标签定义：
 
-- worktree 内的验证已由各 Agent 自己做过（implementer-prompt 里带了这个要求）
-- 编排器在主工作区做**聚合级**检查：`yarn tsc` 全量类型检查、肉眼核对 diff 是否只触及预期范围
-- 参考 `verification-before-completion` 的原则：只凭命令退出码说"通过"，不凭自己的印象
+- `deps`: `none` 或明确的 `Task N` 列表。
+- `owner`: `self | craft | explore | docs`。
+- `lane`: 稳定、简短的 lane id。
+- `isolate`: `yes | no`；是否在 lane worktree 内执行。
+- `risk`: `LOW | MEDIUM | HIGH | CRITICAL`。
 
-### 3.3 合入
+owner 规则：
 
-**不自动 merge。** 调 `finishing-a-development-branch` 让它把合入选项摆给用户。编排器在这一步的唯一动作是把 `results.md` 当上下文递给它。
-
-多个 worktree 的情况：每个 worktree **独立**走一次 `finishing-a-development-branch`，由用户决定各自命运（本地合并 / PR / 保留 / 丢弃）。
-
-为什么合入必须人拍板：全局 CLAUDE.md 把合并 / push / 改认证 / 改支付这类都列在 CRITICAL 等级，需要用户明确授权才能执行。
-
----
-
-## 和其他 skill 的边界
-
-| skill | 关系 |
+| owner | 权限 |
 |---|---|
-| `writing-plans` / `brainstorming` | 阶段 1 调用 |
-| `using-git-worktrees` | 阶段 2 由 `Agent(isolation:"worktree")` 底层触发 |
-| `subagent-driven-development` | 阶段 2 借用其 implementer-prompt 模板 |
-| `dispatching-parallel-agents` | 阶段 2 并行派发规范来源 |
-| `finishing-a-development-branch` | 阶段 3 调用 |
-| `verification-before-completion` | 阶段 3 聚合检查参考 |
-| `<domain-feature>` | 命中项目特定的业务数据表格体系（如复杂 Cell Renderer / 列配置）时，**本 skill 在阶段 2 把子任务交给它处理**，而不是自己硬做 |
-| `<chain-integration>` / `<platform-feature>` | 同上，命中对应场景时作为下游 skill 调用 |
-| `<dev-flow>` | 有 Jira 工单号且走完整 Jira → MR → 审查流程时，优先用 `<dev-flow>`；本 skill 只在不含 Jira 或需要并行多 worktree 时使用 |
+| `self` | 父编排器处理编排元数据和少量胶水；修改产品文件时仍须提交、diff、验证和独立审查 |
+| `craft` | 在 lane worktree 写代码、验证并提交一个任务 |
+| `explore` | 只读调研；禁止编辑、提交或生成修改型产物 |
+| `docs` | 独立文档修改；按任务要求提交并验证文档一致性 |
 
-**单条原则**：本 skill 是**编排层**，下游领域 skill 是**实现层**。能用下游 skill 完成的子任务不要在编排层手写。
+### 1.4 lane 分配
 
----
+按以下顺序分配：
 
-## 编排器行为的几条非明文假设
+1. 任务有直接或传递依赖：放进同一 lane，按依赖顺序串行。
+2. 任务修改或生成同一文件：放进同一 lane。
+3. 任务共享 schema、锁文件、公共接口或必须读取对方未集成结果：放进同一 lane。
+4. 只有不存在上述关系的任务才可进入不同 lane 并行。
 
-这些规则之所以存在，是因为跳过它们会导致具体某类失败：
+计划中同时写明每个任务的预期文件。若无法证明两个 lane 独立，就合并 lane。
 
-- **阶段 1 plan 给用户看** — 跳过会出现"派完 Agent 才发现方向错了，worktree 和分支一堆垃圾要清理"
-- **CRITICAL 任务阶段 0 先停** — 跳过违反全局 CLAUDE.md 的 CRITICAL 授权要求
-- **编排器不碰破坏性 git 操作** — reset / force push / branch -D / worktree remove 统一由 `finishing-a-development-branch` 或用户来做，因为自动化的破坏性操作一旦错了不可逆
-- **不自造 worktree / plan 基础设施** — 已有 skill 覆盖，重复造的版本和底层 skill 行为不一致会很难排查
-- **写同文件的 Agent 不并行** — 即使在不同 worktree，合并时冲突成本远高于 plan 阶段拆开的成本
+`explore` 可先于实现运行，但其只读结论必须固化到 `context.md`。`docs` 若依赖实现产生的最终接口，应与该实现同 lane 串行；完全独立的文档可单独成 lane。
 
----
+### 1.5 分支与 worktree
 
-## 编排器行动速查
+- lane 分支：`orchestrate/<task-id>/lane-<id>`。
+- integration 分支：`orchestrate/<task-id>/integration`。
+- 每个 lane 共用一个 worktree；lane 内任务按计划顺序在同一分支执行。
+- integration 使用独立 worktree，从用户确认的目标 base 创建。
 
-| 当前状态 | 下一步 |
+创建前检查 worktree 目录安全、忽略规则、依赖安装方式和基线状态。基线失败要记录并先请求裁决，不能把旧失败算作本次失败。
+
+### 1.6 一次性计划授权
+
+执行前把完整 `plan.md` 给用户过目。授权文本必须明确请求：
+
+- 创建计划中列出的 lane worktree 和分支。
+- 创建临时 integration 分支和 worktree。
+- 允许 craft/docs 以及修改产品文件的 self 任务在各自任务分支提交。
+- 允许父编排器把已审查 lane 按计划顺序内部合并到 integration。
+- 不 push、不合入目标分支、不删除用户已有 worktree。
+
+用户批准后只能在该范围内执行。新增 lane、扩大 CRITICAL 范围或改变目标 base 时重新请求授权。
+
+## 阶段 2：lane 执行、提交、独立审查
+
+### 2.1 Agent 预算
+
+在 `ledger.md` 记录：
+
+- 已调用 Agent 数和剩余额度。
+- 当前并发数。
+- 每个 lane 当前任务和状态。
+- 最后确认的 base/head SHA。
+
+调用计数包括每次实现、调研、文档、审查、修复和复审派发；恢复同一 Agent 继续工作也计一次。计划准入前计算：
+
+```text
+预计调用 = 所有实际派发给 Agent 的 explore/docs/craft 执行调用
+         + 每个修改型任务至少一次独立 reviewer 调用
+         + 至少 2 次修复/复审预留
+```
+
+`owner: self` 的执行本身不计 Agent 调用，但它的独立 reviewer 调用要计。预计调用必须不大于 8。CRITICAL 的质量 reviewer 必须具备独立安全审查职责；若需额外安全 reviewer，也计入公式。预算不足时先合并过细任务、减少调研派发或退出完整编排，不能让 `self` 绕过证据要求。每次 P2/P3 修复或重试都消耗预留；剩余额度不足时先暂停派发。
+
+所有子 Agent prompt 都写明："不得调用 Agent 或继续委派。"
+
+### 2.2 lane 执行
+
+- 不同独立 lane 可并行，同一 lane 永远一次只运行一个任务。
+- 后续任务从同一 lane 的最新已审查 head 开始，因此能看到前置提交。
+- `owner: craft` 必须加载 craft 契约，提交聚焦改动并返回标准 Craft Result。
+- `owner: docs` 使用同样的分支、提交和证据要求，但验证重点是内容、链接、示例和源代码一致性。
+- `owner: explore` 只返回事实、证据路径、不确定项和建议，不得改变 worktree。
+- `owner: self` 若修改产品文件，使用与 craft/docs 相同的提交、diff package、验证和独立审查要求；只改 `.workflow` 编排元数据时可不单独提交。
+
+实现 prompt 必须包含：
+
+- 完整任务和验收标准。
+- lane、worktree、分支、base SHA 和预期文件。
+- `context.md` 中相关事实与 API 查证。
+- 风险级和最低验证要求。
+- git 权限边界。
+- 返回格式和未验证项披露要求。
+
+### 2.3 每任务提交与 diff package
+
+每个 craft/docs 任务及任何修改产品文件的 self 任务完成时必须提供：
+
+- task、lane、worktree。
+- base SHA、head SHA、提交信息。
+- 文件清单和 diff stat。
+- 可复现的 diff 范围或获取命令。
+- 验收标准映射。
+- 验证命令、退出状态、关键结果。
+- 未验证项和偏离计划之处。
+
+缺少提交、head 不在预期分支、diff 混入别的任务或验证证据缺失，都不能进入审查通过状态。
+
+### 2.4 独立审查
+
+实现者不能审查自己的最终结果。由独立 reviewer 对实际 `base..head` 做两个有顺序的检查：
+
+1. **规格审查**：逐条核对任务范围和验收标准，检查漏做、越界和错误假设。
+2. **质量审查**：检查正确性、回归、测试、复杂度、复用、安全和维护性。
+
+reviewer 只读，不提交修改。结论为：
+
+- `APPROVED`。
+- `CHANGES_REQUESTED`，列出 P0-P3、文件/行、证据和所违反的要求。
+- `BLOCKED`，说明缺少什么事实。
+
+P2/P3 返回同一任务执行者自动修复、提交并重跑受影响验证，然后 reviewer 复审新范围。P0/P1 由父编排器汇总后一次请求用户裁决。
+
+用户裁决后按唯一明确状态转换：
+
+- **修复**：重开原任务，形成新提交，重跑受影响验证，再做规格和质量复审。
+- **缩小/取消范围**：冻结并放弃包含该未批准提交的旧 lane，不将它汇入 integration。从该任务的 base SHA（即前一个已批准提交）创建 replacement lane，更新 plan/授权后再执行后续任务；这样被取消提交不会随整条 lane 汇入。
+- **接受风险**：记录 finding、授权者、适用范围和退出条件。只有用户另行明确授权进入 integration 且不违反不可豁免的项目安全规则时，标为 `WAIVED`；最终报告不得称为审查通过。
+- **终止**：冻结该 lane，记录恢复条件，其他独立 lane 可继续。
+
+任务只有在规格和质量两项都批准后，才可标记 `reviewed` 并推进 lane。
+
+### 2.5 规模重判与阻塞熔断
+
+出现以下任一情况，暂停新任务并回到阶段 0/1：
+
+- 实际文件范围显著超过计划。
+- 新发现依赖、共享文件或 lane 间可见性要求。
+- 风险升级到 HIGH/CRITICAL。
+- 需要新增 lane 或改变 integration base。
+
+同一阻塞在补充上下文或重试后再次发生，就触发熔断：停止该 lane，记录最后证据和恢复条件，不盲目继续。其他真正独立 lane 可继续。
+
+## 阶段 3：integration 汇入与组合验证
+
+### 3.1 汇入
+
+所有待汇入任务必须先审查通过；唯一例外是已完成独立审查、由用户明确授权进入 integration 的 `WAIVED` 任务，且该风险不违反不可豁免规则。父编排器在 integration worktree 中按 `plan.md` 的 lane 顺序合并 lane 分支，并在每次合并后记录 integration head。
+
+若出现任何冲突：
+
+1. 立即终止并中止本次合并，恢复到合并前 integration head。
+2. 把冲突记为拆分失败，不在 integration 中手工解冲突。
+3. 识别已汇入的冲突任务和当前待汇入任务，在 plan 中将它们重组为一个 replacement lane。
+4. replacement lane 从步骤 1 的最后干净 integration head 创建；已汇入冲突任务作为已审查前缀，待汇入任务在其后串行重做。若前缀本身必须改变，把变更建成 replacement lane 的新修复任务并重新审查。
+5. replacement lane 只包含相对该干净 integration head 的新提交，因此再次汇入时不会重复合并已汇入提交。
+6. 更新 plan、ledger 和授权范围；需要新分支、改变 base 或扩大范围时请求用户确认。
+7. replacement lane 的新提交全部审查通过后，再汇入当前干净 integration。
+
+不要用 ours/theirs、跳过提交或临时拼补来掩盖错误拆分。
+
+### 3.2 组合验证命令探测
+
+只在 integration worktree 对真实组合代码运行聚合验证。命令按以下证据选择：
+
+1. 项目级指令和 CI 配置。
+2. 构建系统、manifest、包管理脚本。
+3. 现有测试入口和受影响模块惯例。
+
+不假设语言、包管理器或类型系统。命令不存在或环境不足时记录未验证项。
+
+### 3.3 风险分级
+
+| 风险 | integration 最低验证 |
 |---|---|
-| 收到需求 | 先判"是不是代码变更任务" → 再判规模 |
-| 规模够大 | 选 task-id → 必要时 brainstorming → writing-plans |
-| plan 写完 | **停**，等用户确认 |
-| 派子任务 | 按 DAG 并行/串行，`isolate: yes` 用 `Agent(isolation:"worktree")` |
-| Agent 返回 | 读摘要 → 写 results.md → 决定下一步 |
-| 全部完成 | `finishing-a-development-branch` 出选项 → 用户拍板 |
-| 中途走错 | 立即停 → 报当前状态 → 问用户是否回滚 |
+| LOW | 配置/语法检查、目标测试或项目定义的轻量检查 |
+| MEDIUM | LOW + 受影响测试 + 静态检查 + 跨模块用法搜索 |
+| HIGH | MEDIUM + 全量测试或构建 + 关键路径验证 |
+| CRITICAL | HIGH + 完整回归 + 独立安全审查 + 出口用户确认 |
+
+如果项目提供多种验证，优先复现 CI 的关键命令。记录每条命令、工作目录、退出状态和未运行原因。
+
+### 3.4 integration 修复
+
+组合验证暴露的问题只能集中到一个 `integration-fix` 任务：
+
+- 在 integration 分支内做最小修复。
+- 单独提交并生成 diff package。
+- 由独立 reviewer 做规格与质量审查。
+- 重跑失败命令、相邻验证和该风险级要求的聚合验证。
+
+如果修复说明原 lane 拆分错误，回到 lane 重组，不能把长期业务实现堆进 integration-fix。
+
+## 阶段 4：结果与用户决策
+
+### 4.1 results.md
+
+每个修改型任务记录一行或一节，至少含：
+
+```markdown
+- task:
+  lane:
+  worktree:
+  base SHA:
+  head SHA:
+  review:
+  validation commands:
+  exit status:
+  unverified:
+```
+
+此外记录：
+
+- lane 分支和最终 head。
+- integration 分支、汇入顺序和最终 head。
+- integration 聚合验证。
+- P0/P1 裁决及 CRITICAL 入口/出口确认。
+- 偏离 plan、熔断和仍需人工处理的事项。
+
+### 4.2 最终边界
+
+向用户报告：
+
+1. 完成和未完成的任务。
+2. 每个 lane 的提交与审查结论。
+3. integration 组合验证及未验证项。
+4. integration 分支相对目标 base 的 diff 摘要。
+5. 可选的后续动作。
+
+最终是否把 integration 合入目标分支由用户决定。未经新的明确授权，不 merge 目标分支、不 push、不清理分支或 worktree。
+
+## ledger、恢复与 handoff
+
+每次任务提交、审查、lane 推进、integration 合并和验证后立即更新 `ledger.md`。至少记录：
+
+- 当前阶段和下一个安全动作。
+- plan 版本与用户授权摘要。
+- Agent 预算。
+- lane/task 状态。
+- 分支、worktree、base/head SHA。
+- 最后一条验证命令和退出状态。
+- 阻塞、未验证项和需要用户裁决的 P0/P1。
+
+上下文压缩或会话恢复后，先读取 `context.md`、`plan.md`、`ledger.md`、`results.md`，再用 git 当前事实复核分支和 SHA；不凭记忆继续。
+
+需要 handoff 时，交接包必须包含以上文件路径、当前阶段、剩余预算、已授权范围、禁止动作和唯一下一步。接收者复核事实后才能继续。
+
+## 完成判定
+
+只有同时满足以下条件才可说编排执行完成：
+
+- 所有完成的 craft/docs 任务及修改产品文件的 self 任务都有提交和 diff package。
+- 每个实现单元的规格与质量审查均通过；显式 `WAIVED` 只能报告为带风险交付，不能计入“全部审查通过”。
+- 所有计划 lane 已按顺序组合到 integration，且没有未处理冲突。
+- integration 已执行对应风险级的聚合验证。
+- 所有未验证项、P0/P1 和偏离计划均已披露。
+- `~/.agents`、用户目标分支和用户已有 worktree 未被擅自修改。

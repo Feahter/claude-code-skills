@@ -1,0 +1,14 @@
+[
+  {
+    "id": 1,
+    "prompt": "帮我评审下这个登录的 e2e 测试，写得好不好？\n```ts\ntest('login', async () => {\n  await page.goto('https://app.example.com/login')\n  await page.fill('#username', 'admin')\n  await page.fill('#password', '123456')\n  await page.click('.btn-primary')\n  await page.waitForTimeout(3000)\n  expect(await page.textContent('.welcome')).toContain('欢迎')\n})\n```",
+    "expected": "识别 waitForTimeout(3000) 硬编码等待、.btn-primary 易变选择器、只验 UI 文案的弱断言、硬编码凭证；给出评分（应判重构）；定位到具体行；给可执行最小改进项",
+    "type": "happy_path"
+  },
+  {
+    "id": 2,
+    "prompt": "我有条 e2e 测试在验证页脚的版权年份是不是 2026，要不要保留？",
+    "expected": "判定业务价值极低（命中“用 E2E 测页脚版权年份”反模式），建议下沉单测或删除，并解释删掉它上线风险可接受",
+    "type": "judgment"
+  }
+]

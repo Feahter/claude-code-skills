@@ -1,0 +1,29 @@
+{
+  "skill_name": "prompt-optimizer",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "优化 ~/.claude/output-styles/engineer-professional.md，最近 Opus 的中文太像内部规章。不要降低编码能力，直接修改并验证。",
+      "expected_output": "识别为 Output Style，读取专用文档并修改文件；检查内置编码指令是否保留、常驻体积和新会话生效边界；改写版不带诊断标签。",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "这个 skill 老是没触发。description 是：`Summarize documents.` 用户原话是“把 Downloads 里的三份访谈记录整理成带行动项的中文纪要”。帮我改 description。",
+      "expected_output": "识别为 Skill description 触发问题，利用失败样本补足动作、对象和输出场景；给出简洁、干净的完整 description，不机械要求排除项或维度标签。",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "帮我优化这个 Anthropic API system prompt：`Classify the ticket as billing, bug, or feature. Return one label.`",
+      "expected_output": "保留简单分类任务的简洁性，不强制添加角色、XML、JSON schema、禁止项或两条 few-shot；只补真正影响分类和异常输入处理的约束。",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "改写给子 agent 的任务：`看一下支付模块为什么偶尔重复扣款，找到问题就修。` 子 agent 可以读代码和跑测试，但不能改数据库、提交或发布。",
+      "expected_output": "补充必要上下文、调查范围、写权限边界、完成条件和验证要求；不强制一句话输出，也不假设 agent 继承主会话。",
+      "files": []
+    }
+  ]
+}

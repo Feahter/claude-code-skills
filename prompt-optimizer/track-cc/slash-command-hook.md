@@ -1,84 +1,35 @@
-# CC track · slash command / hook 配置优化
+# Slash Command / Hook
 
-settings.json 里的 hook 配置 或 `.claude/commands/` 下的 slash command 定义。
+优化 slash command 的 prompt，以及 Codex 或 Claude Code 的 hook 配置。产品和版本差异较大，涉及事件名、matcher、返回码或配置层级时先查当前官方文档。
 
-**能力边界**：轻量通用建议。核心毛病是"事件选错、matcher 粗糙、block 副作用"。
+## Slash command
 
-## 诊断清单（四条）
+检查：
 
-### ① 事件类型选对没
+- 命令目标是否清楚，参数如何传入，缺少参数时怎样处理。
+- prompt 是否只包含执行该命令所需的上下文，而不是复制全局规则。
+- 输出或副作用是否符合命令名给用户的预期。
+- 用户输入是否与指令、示例和模板清楚分隔，避免把参数误当指令。
 
-hook 事件类型有固定语义，选错就永远不触发或在错误时机触发。
+## Hook
 
-- **常见事件**：`UserPromptSubmit`（用户提交前）、`PreToolUse`（工具调用前）、`PostToolUse`、`Stop`（回合结束）、`SubagentStop`
-- **失败表现**：
-  - 想在"Claude 要跑 Bash 之前拦截"，却挂在 `UserPromptSubmit`
-  - 想在"Claude 回答完给提示"，却挂在 `PreToolUse`
-- **诊断手段**：读 hook 的实际用途 → 对照事件语义
+检查：
 
-### ② matcher 精准度
+- **时机**：事件是否对应想要拦截、观察或通知的阶段。
+- **范围**：matcher 是否覆盖目标而不过度触发。
+- **副作用**：退出码、阻断、重试和错误输出是否可能造成循环或静默失败。
+- **成本**：高频事件上的脚本是否足够快，是否重复扫描项目或调用网络。
+- **安全**：是否拼接未转义输入、泄露敏感信息或执行超出预期的命令。
+- **层级**：全局、项目和本地配置是否与实际作用范围一致。
+- **可恢复性**：失败时是否有可见信息，禁用或回退路径是否明确。
 
-hook 的 matcher 决定了什么情况下触发。
+## 改写原则
 
-- **失败表现**：
-  - matcher 写得太宽（`.*`）→ 所有工具调用都触发，性能炸
-  - matcher 写得太窄（`exact tool name`）→ 漏掉变体
-- **修法**：用具体的工具名或工具名前缀，避免正则通配
+- 不凭记忆假定事件名和 matcher 语法。
+- 一个 hook 可以组合紧密相关的动作，但不要因追求“单一职责”制造无意义进程。
+- 只有需要阻止明确风险时才 block；通知和观测类 hook 默认不应改变主流程。
+- 已有脚本时优先修改和测试脚本，不把复杂 shell 逻辑塞进 JSON。
 
-### ③ block / 中断副作用
+## 输出
 
-hook 可以 block 执行（返回非零或 deny）。block 的场景选错会打断正常流程。
-
-- **失败表现**：
-  - 在 `Stop` 事件里 block → 强制 Claude 继续干活，可能陷入死循环
-  - `PreToolUse` 无条件 block 某工具 → 整类任务做不了
-- **修法**：block 要有**明确的触发条件**和**用户可见的提示**，不要静默拦截
-
-### ④ settings 层级归属
-
-hook 放在哪个层级决定了作用范围。
-
-- **层级**：user settings（全局）→ project settings（项目级）→ local settings（不提交）
-- **失败表现**：
-  - 项目专属 hook 放进 user settings → 所有项目都受影响
-  - 通用的权限 allowlist 写在 project settings → 换项目要重新配
-- **修法**：按"专属度"放对应层；不确定时先放 local 验证
-
----
-
-## 输出模板
-
-```markdown
-## 诊断结论
-
-- [① 事件类型] ❌ 选错：用户想"工具调用前拦 Bash"，但 hook 挂在 `UserPromptSubmit`
-- [② matcher 精准度] ⚠️ 过宽：matcher = `.*`，所有工具都触发
-- [③ block 副作用] ⚠️ 风险：Stop 事件里 block 但没提示用户，可能陷入循环
-- [④ 层级归属] ❌ 放错：项目专属 hook 写进了 ~/.claude/settings.json
-
-## 改写版
-
-<原始配置>
-
-改写后：
-- event: "PreToolUse" [① 调整]
-- matcher: "Bash" [② 调整]
-- 改到 <project-root>/.claude/settings.json [④ 调整]
-- block 时输出一条用户可见提示："已拦截 rm -rf，请手动确认" [③ 调整]
-```
-
----
-
-## 常见反模式
-
-| 反模式 | 修法 |
-|---|---|
-| hook 事件凭直觉猜 | 查官方文档确认事件语义 |
-| matcher 写 `.*` 一把梭 | 用具体工具名/前缀 |
-| 静默 block 无提示 | 任何 block 都要输出给用户 |
-| 项目专属规则放全局 | 专属度越高放越靠下（user → project → local） |
-| 一个 hook 干多件事 | 拆成多个单一职责 hook |
-
-## 参考
-
-对 settings.json 更系统的改动建议用 `update-config` skill 处理；本文档只覆盖"诊断配好了为什么不生效"这个维度。
+说明配置为什么会漏触发、过度触发或影响流程，再给最小配置或 prompt 改动。若用户只提供 prompt 文本，不擅自扩展到系统配置。
