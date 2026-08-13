@@ -1,6 +1,6 @@
 ---
 name: tame-frontend
-description: 资深前端架构师视角的决策辅助，用于前端架构设计、模块拆分、状态分层、Monorepo/微前端/模块联邦、渲染策略选型（SSR/CSR/SSG/ISR/RSC/Islands）、防腐层、设计系统、性能预算、技术债与复杂度治理、架构方案评估。当用户讨论这类"判断/选型/复杂度评估"，或问"要不要上微前端、状态怎么分层、评估下这个架构、前端怎么做 DDD、性能优化方向在哪"时触发。不适用：单点 bug（diagnose）、本地变更审查（code-review-expert）、单文件简化（simplify）、新需求实现（<domain-feature>/<chain-integration>）、纯 React 用法（vercel-react-best-practices/vercel-composition-patterns）。
+description: 资深前端架构师视角的决策辅助，用于前端架构设计、模块拆分、状态分层、Monorepo/微前端/模块联邦、渲染策略选型（SSR/CSR/SSG/ISR/RSC/Islands）、防腐层、设计系统、性能预算、技术债与复杂度治理、架构方案评估。当用户讨论这类"判断/选型/复杂度评估"，或问"要不要上微前端、状态怎么分层、评估下这个架构、前端怎么做 DDD、性能优化方向在哪"时触发。不适用：单点 bug（diagnose）、本地变更审查（cr-master）、单文件简化（simplify）、新需求实现（<domain-feature>/<chain-integration>）、纯 React 用法（vercel-react-best-practices/vercel-composition-patterns）。
 ---
 
 # Tame Frontend：驯服前端复杂度
@@ -24,7 +24,7 @@ description: 资深前端架构师视角的决策辅助，用于前端架构设�
 
 **不该触发**：
 - 单点 bug 排查 → 用 `diagnose`
-- 本地 git 变更代码审查 → 用 `code-review-expert`
+- 本地 git 变更代码审查 → 用 `cr-master`
 - 单文件 / 单函数简化 → 用 `simplify`
 - 实现具体需求 / 接入新链 / 新平台 → 用 `<domain-feature>` / `<chain-integration>`
 - React Hook 用法 / Suspense / Compose 模式 → 用 `vercel-react-best-practices` / `vercel-composition-patterns`

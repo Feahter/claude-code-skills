@@ -1,0 +1,160 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Strategy Package",
+  "description": "test-strategist 的交付产物。风险台账 + 验证义务 + 不覆盖范围。scripts/validate-package.sh 是实际门禁，本 schema 是字段契约的说明性定义。",
+  "type": "object",
+  "required": ["scope", "input_kind", "risks", "not_covered"],
+  "comment": "evidence_summary 与 counter_review 在 mode=full 时必需，mode=quick 可省略——这个条件约束由 scripts/validate-package.sh 强制，JSON Schema 的 required 只列无条件必需的字段，避免与门禁脚本矛盾。",
+  "additionalProperties": false,
+  "properties": {
+    "scope": {
+      "type": "string",
+      "description": "本次分析的范围。写清分析了什么、边界在哪。"
+    },
+    "input_kind": {
+      "type": "string",
+      "enum": ["diff", "requirement", "incident", "suite"],
+      "description": "输入类型，决定走哪个场景路由。diff=代码变更；requirement=需求或设计；incident=线上事故；suite=已有套件环节体检。"
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["full", "quick"],
+      "default": "full",
+      "description": "quick 模式仅用于 <3 文件且不碰 P0 白名单领域的小改动，最多 2 条风险。"
+    },
+    "evidence_summary": {
+      "type": "object",
+      "description": "证据三分。quick 模式可省略。",
+      "required": ["facts", "inferences", "unknowns"],
+      "properties": {
+        "facts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["statement", "location"],
+            "properties": {
+              "statement": { "type": "string" },
+              "location": { "type": "string", "description": "file:line / 需求 §x.y / 事故编号 / 指标名+时间窗" }
+            }
+          }
+        },
+        "inferences": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["statement", "based_on"],
+            "properties": {
+              "statement": { "type": "string" },
+              "based_on": { "type": "string", "description": "依据的是哪条事实" }
+            }
+          }
+        },
+        "unknowns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["question", "how_to_resolve"],
+            "properties": {
+              "question": { "type": "string" },
+              "how_to_resolve": { "type": "string", "description": "问谁 / 读哪个文件 / 看哪个指标" }
+            }
+          }
+        }
+      }
+    },
+    "risks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["risk_id", "evidence", "failure_mode", "impact", "priority", "disposition"],
+        "properties": {
+          "risk_id": {
+            "type": "string",
+            "pattern": "^R-[A-Z]?[0-9]{2,}$",
+            "description": "唯一。并行 agent 扫描时用单字母前缀区分来源（R-A01 / R-B01）避免冲突。下游 playbook 生成的测试必须回填此 ID。"
+          },
+          "evidence": {
+            "type": "string",
+            "description": "file:line / 需求段落 / 事故编号，或字面量 assumption-no-evidence。后者优先级最高 P2。"
+          },
+          "failure_mode": {
+            "type": "string",
+            "description": "这个 bug 长什么样。必须具体到能照它手工植入故障。"
+          },
+          "impact": { "type": "string", "description": "失效后果" },
+          "priority": {
+            "type": "string",
+            "enum": ["P0", "P1", "P2", "P3"],
+            "description": "P0 走白名单：不可逆资金损失/权限越界/数据完整性破坏/核心链路大范围不可用/合规违规。"
+          },
+          "disposition": {
+            "type": "string",
+            "description": "test / monitor / design-fix / explore / accept 之一或用 and 连接的组合，如 test-and-monitor。"
+          },
+          "owner": {
+            "type": "string",
+            "description": "disposition 含 accept 时必填：谁接受了这个风险。"
+          },
+          "validation_obligation": {
+            "type": "object",
+            "required": ["precondition", "observable", "oracle"],
+            "description": "P0/P1 必须有（除纯 accept）。不写实现细节：不写框架、层级、选择器。",
+            "properties": {
+              "precondition": { "type": "string", "description": "怎么进入这个场景" },
+              "observable": { "type": "string", "description": "该观察什么" },
+              "oracle": { "type": "string", "description": "可判定的判据。见 references/oracle-patterns.md" }
+            }
+          },
+          "testability_gap": {
+            "type": "string",
+            "description": "阻碍验证的东西，无则写 none"
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["high", "medium", "low"],
+            "description": "与证据强度一致。assumption-no-evidence 不得为 high。"
+          },
+          "layer_hint": {
+            "type": "string",
+            "description": "可选。仅当风险本身限定了观察位置时给（如'需在服务端验证'）。层级归属由 playbook 的 test-pyramid 判定，这里不做决定。"
+          }
+        }
+      }
+    },
+    "counter_review": {
+      "type": "object",
+      "description": "反证复核。quick 模式可省略。",
+      "properties": {
+        "speculative_risks": { "type": "array", "items": { "type": "string" }, "description": "哪些风险拿掉推断后站不住" },
+        "refuting_evidence": { "type": "string", "description": "什么证据会推翻当前优先级" },
+        "uncovered_failure_modes": { "type": "array", "items": { "type": "string" } },
+        "deferred": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "not_covered": {
+      "type": "array",
+      "minItems": 1,
+      "description": "必须显式列出不覆盖什么。沉默省略等于骗人。确实无遗留时也要写一条说明理由。",
+      "items": {
+        "type": "object",
+        "required": ["item", "reason"],
+        "properties": {
+          "item": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "handoff": {
+      "type": "object",
+      "description": "交接信息。哪些 risk_id 给 playbook，哪些给监控，哪些给设计。",
+      "properties": {
+        "to_playbook": { "type": "array", "items": { "type": "string" } },
+        "to_monitoring": { "type": "array", "items": { "type": "string" } },
+        "to_design": { "type": "array", "items": { "type": "string" } },
+        "to_human_exploration": { "type": "array", "items": { "type": "string" } },
+        "accepted": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

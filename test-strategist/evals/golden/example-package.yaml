@@ -1,0 +1,104 @@
+# 合格策略包参考样例。场景：退款接口加入失败自动重试。
+# 这份样例的作用是给出字段填写的标准形态，不是照抄的模板——
+# 每条风险的 evidence 必须来自你真实读到的代码。
+
+scope: 退款接口新增失败自动重试逻辑。分析范围为 src/order/refund.ts 与其调用链，不含前端展示层。
+input_kind: diff
+mode: full
+
+evidence_summary:
+  facts:
+    - statement: 新增重试逻辑，最多重试 3 次，间隔固定 1 秒
+      location: src/order/refund.ts:84-96
+    - statement: refund_transaction 表无唯一索引，仅主键自增
+      location: migrations/20260801_create_refund_transaction.sql:12
+    - statement: 退款请求体不含幂等键，服务端也未生成
+      location: src/order/dto/refund.dto.ts:1-18
+    - statement: 该文件近 30 天有 7 次提交，其中 2 次 commit message 含 fix
+      location: git log --oneline -20 -- src/order/refund.ts
+  inferences:
+    - statement: 重试会导致同一笔退款被执行多次，产生重复账务记录
+      based_on: 无幂等键 + 无唯一索引 + 重试 3 次这三条事实的组合
+    - statement: 该模块近期不稳定，变更风险偏高
+      based_on: 30 天 7 次提交且含 2 次 fix
+  unknowns:
+    - question: 下游支付网关自身是否按请求维度做了幂等
+      how_to_resolve: 查网关接入文档，或问支付组是否按 out_trade_no 去重
+
+risks:
+  - risk_id: R-01
+    evidence: src/order/refund.ts:84-96
+    failure_mode: 首次请求实际已在网关侧成功但响应超时，重试再次发起，同一订单产生两条退款账务记录，资金多退
+    impact: 不可逆资金损失，需人工追回
+    priority: P0
+    disposition: test-and-design-fix
+    confidence: high
+    validation_obligation:
+      precondition: 同一退款请求在网关侧首次成功但客户端超时，触发重试
+      observable: refund_transaction 表中该 order_id 的记录数与网关侧退款笔数
+      oracle: 该 order_id 的 refund_transaction 记录数 == 1，且网关退款笔数 == 1
+    testability_gap: 网关侧退款笔数当前无查询接口，只能验本地记录数，需补对账查询能力
+
+  - risk_id: R-02
+    evidence: migrations/20260801_create_refund_transaction.sql:12
+    failure_mode: 缺唯一索引，任何并发或重试路径下的重复写入都无存储层兜底，错误状态可以合法落库
+    impact: 数据完整性破坏，且发生后难以区分正常多笔退款与重复退款
+    priority: P0
+    disposition: design-fix
+    confidence: high
+    validation_obligation:
+      precondition: 对同一 order_id + 同一退款金额并发插入两条记录
+      observable: 插入结果
+      oracle: 第二条插入被唯一约束拒绝，最终表中记录数 == 1
+    testability_gap: none
+
+  - risk_id: R-03
+    evidence: src/order/refund.ts:88
+    failure_mode: 重试间隔固定 1 秒无退避，下游抖动时所有客户端同时重试，放大下游压力
+    impact: 可能加剧下游不可用时长，但有网关侧限流兜底
+    priority: P2
+    disposition: monitor
+    confidence: medium
+    validation_obligation:
+      precondition: 下游持续返回超时
+      observable: 单位时间内本服务发往网关的退款请求数
+      oracle: 重试请求总数 <= 原始请求数 × 3，且相邻重试间隔单调递增
+    testability_gap: 需要下游压力数据才能判断实际影响，测试环境无法复现
+
+  - risk_id: R-04
+    evidence: assumption-no-evidence
+    failure_mode: 退款成功后未发送通知，或通知随重试重复发送
+    impact: 用户收到多条退款通知，体验受损
+    priority: P2
+    disposition: explore
+    confidence: low
+    validation_obligation:
+      precondition: 触发重试且最终退款成功
+      observable: 通知发送记录条数
+      oracle: 同一 order_id 的退款通知发送记录数 == 1
+    testability_gap: 未读通知模块代码，不确定通知是否在重试范围内。需先读 src/notification 确认
+
+counter_review:
+  speculative_risks:
+    - R-04 完全基于假设，未读通知模块代码，可能通知本就在事务外且已有去重
+  refuting_evidence: 若确认支付网关按 out_trade_no 做了幂等去重，R-01 可降至 P1（网关兜住重复，本地仍会多一条记录但资金不受损）
+  uncovered_failure_modes:
+    - 重试期间订单被取消的交叉场景未分析
+    - 退款部分成功（多笔明细中部分失败）的处理未分析
+  deferred:
+    - 通知重复问题待读通知模块后重新评估
+
+not_covered:
+  - item: 前端展示层的重试状态提示
+    reason: 本次 diff 未触及前端，且失效后果限于提示文案
+  - item: 退款金额计算逻辑本身
+    reason: 本次未改动，且已有单测覆盖
+  - item: 并发路径的实测验证
+    reason: 测试框架串行执行，无法构造真并发。R-02 改为在存储层加约束来消除可能性
+
+handoff:
+  to_playbook: [R-01, R-02]
+  to_monitoring: [R-03]
+  to_design: [R-01, R-02]
+  to_human_exploration: [R-04]
+  accepted: []

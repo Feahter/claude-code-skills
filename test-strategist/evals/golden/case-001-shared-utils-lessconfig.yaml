@@ -1,0 +1,117 @@
+# golden case 001 —— 首次真实实测产物（2026-08-11）
+# 输入：shared-utils commit 3a34a63 "feat(number): NumberFormatter 支持 lessConfig 极小值处理"
+# 这份是真跑出来的，不是示意。R-01/R-04 的证据来自实际执行与实际文件内容。
+# 用途：作为回归基线——流程改动后重跑此 diff，至少应仍然识别出 R-01 与 R-04。
+
+scope: shared-utils commit 3a34a63，NumberFormatter.format 新增 lessConfig 极小值分支。分析范围为该函数与其选项交互，不含调用方用法。
+input_kind: diff
+mode: full
+
+evidence_summary:
+  facts:
+    - statement: lessConfig 分支命中即 return，位置在 pad / subscriptZeros / short / signDisplay 等全部后处理逻辑之前
+      location: src/number/NumberFormatter.ts:322-328
+    - statement: '边界值通过 format(lessBoundary, {...options, lessConfig: undefined}) 递归格式化，继承除 lessConfig 外的全部选项'
+      location: src/number/NumberFormatter.ts:325
+    - statement: 当未显式传 sign 时，某些分支会把 signDisplay 设为 "always"
+      location: src/number/NumberFormatter.ts:360-369
+    - statement: 实测 format(0.001, {style:"percent", lessConfig:{lessBoundary:0.01}}) 返回 "<+1.00%"
+      location: jest 探测实跑，2026-08-11
+    - statement: 实测 format(-0.001, {style:"percent", lessConfig:{lessBoundary:0.01}}) 返回 ">-+1.00%"（三重符号）
+      location: jest 探测实跑，2026-08-11
+    - statement: 实测 lessBoundary 为 0 / -1 / NaN 时分支不触发，走原逻辑返回 "0.001"
+      location: jest 探测实跑，2026-08-11
+    - statement: 本次新增 7 条断言全部为 style=decimal，无 percent / sign / currency 组合
+      location: tests/number/NumberFormatter.test.ts:33-42
+    - statement: package.json 的 scripts.test 为 "tsc -noEmit"，不执行 jest
+      location: package.json
+    - statement: 该包 @scope/utils 被 main-app 依赖
+      location: main-app/package.json
+  inferences:
+    - statement: 任何依赖后处理链的格式化选项都会与 lessConfig 默认不兼容，且后续新增选项会静默继承这个问题
+      based_on: 分支在全部后处理之前 return 这条事实
+    - statement: 本库的展示缺陷会传导到 main-app 的金额展示
+      based_on: main-app 依赖 @scope/utils 这条事实
+  unknowns:
+    - question: 调用方是否真的会在 percent 样式下传 lessConfig
+      how_to_resolve: 在 main-app 里检索 lessConfig 的调用点，看有无 style percent 组合
+    - question: '">-" 这个负值表达是否经产品明确定义'
+      how_to_resolve: 问需求方或查该功能的需求记录
+
+risks:
+  - risk_id: R-01
+    evidence: src/number/NumberFormatter.ts:322-328 + jest 实测输出
+    failure_mode: percent 样式下边界值递归格式化继承了 signDisplay=always，正号被拼进结果，输出 "<+1.00%"；负值再叠加 lessConfig 自己的 ">-" 前缀，输出 ">-+1.00%" 三重符号
+    impact: 金额与百分比展示错误，用户看到无法解读的符号串。不参与数值计算，无资金损失，可通过发版修复
+    priority: P2
+    disposition: test-and-design-fix
+    confidence: high
+    validation_obligation:
+      precondition: style 为 percent 或显式 sign 为 always，同时传入 lessConfig 且值落在边界内
+      observable: format 返回的字符串前缀部分
+      oracle: 正值输出中 "<" 之后的首个字符为数字或货币符号，不为 "+" 或 "-"；负值输出以 ">-" 开头且其后首个字符为数字或货币符号
+    testability_gap: none
+
+  - risk_id: R-02
+    evidence: tests/number/NumberFormatter.test.ts:33-42
+    failure_mode: lessConfig 与 style / sign / short / subscriptZeros 的组合无测试守护，后续新增格式化选项时会静默产生同类拼接错误而无人发现
+    impact: 同类展示缺陷可反复逃逸到下游项目
+    priority: P2
+    disposition: test
+    confidence: high
+    validation_obligation:
+      precondition: 遍历 style（decimal / percent / currency）× sign（未传 / always / never）× 正负值 与 lessConfig 的组合
+      observable: 每个组合的 format 返回值
+      oracle: 每个组合的返回值与约定展示规则表中对应项逐字符相等
+    testability_gap: 需要先与需求方确认各组合的期望展示形态，规则表当前不存在
+
+  - risk_id: R-03
+    evidence: jest 实测 format(-0.001, {sign:"never", lessConfig:{lessBoundary:0.01}}) 返回 ">-0.01"
+    failure_mode: 调用方显式要求 sign 为 never 时，lessConfig 分支拼接的 ">-" 仍带负号，与调用方意图冲突
+    impact: 展示与调用方预期不一致，影响限于该组合
+    priority: P3
+    disposition: explore
+    confidence: medium
+    validation_obligation:
+      precondition: sign 为 never 且值为负且落在边界内
+      observable: format 返回值中是否出现负号
+      oracle: 待产品确认语义后填入。当前仅登记实测事实值 ">-0.01"，不预设正确答案
+    testability_gap: 期望行为未定义，属需求缺口而非实现缺陷
+
+  - risk_id: R-04
+    evidence: package.json 的 scripts.test 为 "tsc -noEmit"
+    failure_mode: 默认测试命令只做类型检查，tests 目录下的 jest 测试不会被执行；按约定跑 npm test 的人或 CI 会得到"通过"，实际断言从未运行
+    impact: 该库全部回归断言处于无守护状态，缺陷可直接流向依赖它的 main-app
+    priority: P1
+    disposition: design-fix
+    confidence: high
+    validation_obligation:
+      precondition: 在仓库根目录执行 npm test
+      observable: 命令输出与退出码
+      oracle: '输出包含 jest 的测试统计行（Tests: N passed），且当任意一条断言失败时退出码非零'
+    testability_gap: none
+
+counter_review:
+  speculative_risks:
+    - R-03 依赖产品语义定义，无需求文档支撑，属语义讨论而非确认的缺陷，因此定 P3 且处置为 explore
+  refuting_evidence: 若检索确认 main-app 从不在 percent 样式下传 lessConfig，R-01 的实际暴露面消失，可降至 P3；若确认 npm test 之外另有 CI 配置执行 jest，R-04 应降级或撤销
+  uncovered_failure_modes:
+    - 值正好等于 lessBoundary 时的行为未实测（源码用 lessThan 严格小于，推断不触发，但未验证）
+    - lessBoundary 传入超大数（如 1e308）时递归格式化的行为未实测
+  deferred:
+    - R-03 待产品确认负值表达语义后再定处置
+
+not_covered:
+  - item: 调用方实际用法
+    reason: 本次只分析库内行为，未检索 main-app 中 lessConfig 的调用点。这也是 R-01 降级的关键未知项
+  - item: NumberFormatter 之外的其他模块
+    reason: 本次 diff 未触及
+  - item: lessBoundary 传入 Decimal 类型
+    reason: 类型声明为 number，超出声明的用法不在本次范围内
+
+handoff:
+  to_playbook: [R-01, R-02]
+  to_monitoring: []
+  to_design: [R-01, R-04]
+  to_human_exploration: [R-03]
+  accepted: []

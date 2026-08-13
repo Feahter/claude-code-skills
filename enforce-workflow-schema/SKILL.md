@@ -63,8 +63,8 @@ description: 把"开始做需求"落到 .workflow/<task-id>/ 标准目录，强�
 - 单文件单行 bug 修复（直接改）
 - 纯方案讨论 / 架构评估（用 think-rigorously / brainstorming）
 - 查埋点 / 查交易 / 查配置（用对应 investigate-* skill）
-- 纯 code review（用 code-review-expert）
-- 未提交但已写好的代码做 review（用 code-review-expert）
+- 纯 code review（用 cr-master）
+- 未提交但已写好的代码做 review（用 cr-master）
 
 ## 模板位置
 - 创建文件时优先复制 `~/.claude/skills/enforce-workflow-schema/templates/spec.md` 和 `plan.md`

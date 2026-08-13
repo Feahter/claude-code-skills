@@ -1,6 +1,6 @@
 ---
 name: metacognition-reflect
-description: 对当前会话做元认知复盘——把本轮关键判断（假设/证据/置信度）、用户纠正与确认、tsc/测试验证失败事件抽成结构化 JSON 入队，并调 reflect.sh 合并到 memory/metacognition/。触发：用户说"复盘/复盘本次对话/沉淀本轮认知/总结本次协作/reflect"，或"以后别再这样/记下这个坑/这个偏差记一下"。不适用：纯代码审查（code-review-expert）、常规 commit 生成、会话过短（<5 轮）且无明显判断。
+description: 对当前会话做元认知复盘——把本轮关键判断（假设/证据/置信度）、用户纠正与确认、tsc/测试验证失败事件抽成结构化 JSON 入队，并调 reflect.sh 合并到 memory/metacognition/。触发：用户说"复盘/复盘本次对话/沉淀本轮认知/总结本次协作/reflect"，或"以后别再这样/记下这个坑/这个偏差记一下"。不适用：纯代码审查（cr-master）、常规 commit 生成、会话过短（<5 轮）且无明显判断。
 ---
 
 # metacognition-reflect

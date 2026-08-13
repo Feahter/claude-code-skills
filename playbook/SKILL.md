@@ -57,7 +57,13 @@ bash ~/.claude/skills/playbook/scripts/detect-project.sh > .playbook/project.jso
 
 ### 阶段 2：规划（Plan）
 
-读 `.playbook/project.json` + 用户的测试目标（哪些页面、哪些流程），**第一步先过测试金字塔判断**（分层决策树详见 `references/test-pyramid.md`，E2E 层细节见 `references/architecture.md`）。playbook 是全层引擎，逻辑级/数据流级**不再推回甩手，而是落进分层 backlog 由对应层承接**：
+读 `.playbook/project.json` + 测试目标，**第一步先过测试金字塔判断**（分层决策树详见 `references/test-pyramid.md`，E2E 层细节见 `references/architecture.md`）。
+
+> **测试目标从哪来**：用户直接给（哪些页面、哪些流程）→ 照做。若已有 `test-strategist` 产出的策略包（默认在项目根的 `.test-strategy/package.yaml`），**优先用它 `disposition` 含 `test` 的验证义务当目标**——每条义务的 `oracle` 就是断言要证明的内容，`precondition` 就是用例的前置条件，`risk_id` 要回填进生成的用例名或紧邻注释，供 `e2e-test-quality` 按 ID 验收。层级归属仍由本 skill 判定，策略包不决定分层。
+>
+> 反过来，用户问的是"**该测什么 / 先测哪个 / 值不值得测**"而不是"怎么测"时，先交 `test-strategist`，别在这里凭经验拟目标。
+
+playbook 是全层引擎，逻辑级/数据流级**不再推回甩手，而是落进分层 backlog 由对应层承接**：
 
 - 流程级目标（登录→下单→支付）→ **E2E** ✅ 走下面四阶段
 - 逻辑级目标（金额计算、表单校验）→ **单元**，进 backlog（见下「分层承接」）
@@ -220,6 +226,8 @@ bash ~/.claude/skills/playbook/scripts/validate-test.sh tests/<file>.spec.ts
 - 移动端原生（Appium / Detox）
 - 性能测试（用 `performance-optimizer` skill）
 - 仅"跑一下 dev server 看页面" → 用 `webapp-testing` skill
+- 只评审已有 E2E 好坏 / 要打分或质量基线（"这个 e2e 写得好不好"、"这条 case 该不该留"）→ 用 `e2e-test-quality` skill；它评完要动手改才回到本 skill
+- 要决定**测什么**而不是**怎么测**（"这次变更风险在哪"、"时间不够先测哪个"、"这个能不能不测"、"这需求测得了吗"、"事故后该补什么"）→ 用 `test-strategist` skill；它出策略包后，`disposition: test` 的义务交回本 skill 落地
 
 ## 与其他 skill 的协作
 
@@ -227,8 +235,12 @@ bash ~/.claude/skills/playbook/scripts/validate-test.sh tests/<file>.spec.ts
 - **项目有专属测试 skill / 标杆** → 阶段 3 的 unit/integration 行委托它照标杆生成（命名、打桩风格贴合项目），playbook 只给方法论与层级判断。
 - **裸项目（无专属 skill）** → playbook 用 `gen-unit-test.sh` 通用模板兜底，`scaffold-unit.sh` 搭底座，任何项目都能直接被驱动生成全层测试。
 
+**上游输入**：
+- `test-strategist`：**风险与策略的上游**。它决定测什么、优先级、怎么判定（oracle）；本 skill 决定怎么写、落哪一层、怎么写得不 flaky。它的策略包是阶段 2 的可选输入（见上）。**边界**：本 skill 不重新定义业务风险优先级，它不定义测试写法——它引用本 skill 的 references 而不复制正文。完整矩阵见 `~/.claude/skills/test-strategist/references/ownership.md`。
+
 其他协作：
+- `e2e-test-quality`：**质量标准的下游消费者**。它不重复定义写法，选择器 / 断言 / flaky / 分层归属一律引用本 skill 的 `references/`；本 skill 是单一事实源，规则冲突时以这里为准。用它的场合：阶段 4 校验通过后要一份质量打分或治理基线、接手历史套件要先定级、用户直接问"这套 E2E 写得好不好"。
 - `webapp-testing`：阶段 4 校验失败时，调用它跑 dev server 抓页面状态
 - `dispatching-parallel-agents`：阶段 4.5 派 agent 时遵循其方法论
 - `verify` / `run`：用户需要手动看效果时调用
-- `code-review-expert`：测试代码写完后让它审一遍
+- `cr-master`：测试代码写完后让它审一遍（审代码质量，不审测试有效性——后者是 `e2e-test-quality`）
