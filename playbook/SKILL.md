@@ -1,9 +1,11 @@
 ---
 name: playbook
 description: |
-  前端自动化测试全层引擎：掌握单元 / 集成 / E2E 全套方法论，四阶段脚本驱动（探测项目栈 → 规划分层用例 → 生成测试 → 校验稳定性）的确定性流程。当用户要给前端项目加测试、写测试用例、判断该测哪一层、排查 flaky、上 CI、做覆盖率审计、或问"这块怎么测"时，必须用本 skill 而不是凭经验自由发挥。
-  触发关键词：playwright、E2E、e2e、end-to-end、自动化测试、UI 测试、集成测试、单元测试、单测、vitest、jest、testing-library、msw、测试金字塔、测试覆盖、覆盖率、coverage、flaky、storageState、fixture、trace、codegen、playwright.config、testid、page object。
-  不适用：移动端原生测试（Appium/Detox）、性能测试（用 performance-optimizer）。
+  前端自动化测试的**写法与实现引擎**：单元 / 集成 / E2E 全套方法论，四阶段脚本驱动（探测项目栈 → 规划分层用例 → 生成测试 → 校验稳定性）的确定性流程。凡要产出或修改测试代码、搭测试底座、配 CI，用本 skill 而不是凭经验自由发挥。
+  该用本 skill：给项目加测试、写或改测试用例；判断某个 case 该放单测 / 集成 / E2E（分层归属）；选择器与断言怎么写、Page Object 怎么组织、怎么 mock 与建 fixture；测试不稳定 / flaky 的归因与修法；某条测试为什么挂（trace 定位）；上 CI、配覆盖率工具、跑 coverage 数字。
+  触发关键词：playwright、E2E、e2e、end-to-end、自动化测试、UI 测试、集成测试、单元测试、单测、vitest、jest、testing-library、msw、测试金字塔、覆盖率、coverage、flaky、storageState、fixture、trace、codegen、playwright.config、testid、page object。
+  三方分流（测试类 skill 只此三个，按**手里的输入物**选）：手里是需求 / 变更 / 事故，还不知道该测什么，要排优先级或判断能不能不测 → `test-strategist`；手里已知要测什么、要产出测试代码 → 本 skill；手里已有测试代码，要打分定级或判断某条 case 该不该留 → `e2e-test-quality`。问"这块怎么测"先分辨：还不知道测什么归 test-strategist，已知测什么、问用什么写法归本 skill。
+  不适用：移动端原生测试（Appium/Detox）、性能测试（用 performance-optimizer）、只跑 dev server 看页面（用 webapp-testing）。
 ---
 
 # playbook —— 前端自动化测试全层引擎
@@ -215,7 +217,9 @@ bash ~/.claude/skills/playbook/scripts/validate-test.sh tests/<file>.spec.ts
 
 ## 触发与边界
 
-**触发**：用户消息含 playwright / E2E / 自动化测试 / UI 测试 / 单元测试 / 单测 / 集成测试 / vitest / jest / testing-library / msw / 测试金字塔 / 测试覆盖 / 覆盖率 / flaky / storageState / fixture / trace / codegen / page object 任一关键词，或要求"给项目加测试"、问"这块怎么测"。
+**触发**：用户消息含 playwright / E2E / 自动化测试 / UI 测试 / 单元测试 / 单测 / 集成测试 / vitest / jest / testing-library / msw / 测试金字塔 / 覆盖率 / flaky / storageState / fixture / trace / codegen / page object 任一关键词，或要求"给项目加测试"。
+
+**入口消歧**（关键词命中不等于该由本 skill 接）：本 skill 的位置是「已知要测什么 → 产出测试代码」。问"这块怎么测"时先分辨手里有什么——只有需求或变更、还不知道该测哪些点，归 `test-strategist`；已知测什么、问用什么写法落地，归本 skill。问"覆盖够不够"同理：配覆盖率工具、看 coverage 数字归本 skill；该覆盖哪些风险点归 `test-strategist`；评已有套件覆盖度归 `e2e-test-quality`。完整问法路由表见 `~/.claude/skills/test-strategist/references/ownership.md` 的「问法路由」节。
 
 **承接范围**：
 - 单元测试（Vitest/Jest）+ 集成测试（Testing Library + MSW）→ 本 skill 给方法论 + 分层判断 + 通用生成；项目有专属 skill/标杆则驱动它因地制宜生成

@@ -1,6 +1,9 @@
 ---
 name: prompt-optimizer
-description: 优化 prompt 的触发、结构和文风。适用于 Codex / Claude Code 的 Skill description、agent prompt、AGENTS.md / CLAUDE.md、Output Style、command / hook，以及 Anthropic API prompt。用户要求“优化提示词”“skill 没触发”“规则没生效”“改写 system 或 agent prompt”，或提供 prompt 文件时使用；可直接改文件或结合失败样本做 eval。不用于模型选型和代码逻辑 bug。
+description: |
+  **手工精修一份已有 prompt 的文本**——触发、结构和文风，改一次改到位，不跑自动循环。适用于 Codex / Claude Code 的 Skill description、agent prompt、AGENTS.md / CLAUDE.md、Output Style、command / hook，以及 Anthropic API prompt（按资产类型读对应方法卡）。用户要求"优化提示词""skill 没触发""规则没生效""改写 system 或 agent prompt""这段提示词帮我改改"，或直接给出 prompt 文件时使用；可直接改文件，也可只审计给建议，或结合失败样本做 eval。
+  四方分流——skill 元工具只此四个，按**要什么动作**选：手工精修已有 prompt 文本 → 本 skill（单个 skill 触发不准、改一份 description、调 agent prompt 或 CLAUDE.md 都归这里）；从零新建 skill → `skill-creator`；要机器自动多轮迭代 + 独立 judge 打分 + 自动 keep/revert，或要按 rubric 出分数 → `darwin-skill`；把本次会话的反馈沉淀回 skill 正文 → `skill-evolution-manager`。
+  不适用：**多个 skill 互抢触发、彼此边界模糊**——那不是文本问题，是资产架构决策，主会话直接重划分工，不要在这里逐个优化 description；模型选型；代码逻辑 bug。
 ---
 
 # Prompt Optimizer

@@ -1,6 +1,6 @@
 ---
 name: enforce-workflow-schema
-description: 把"开始做需求"落到 .workflow/<task-id>/ 标准目录，强制 spec.md（含排除范围）+ plan.md（含验证证据），衔接 writing-plans / subagent-driven-development / verification-before-completion / <domain-feature>。触发：消息含 Jira 号（PROJECT-数字）、`.workflow/` 路径，或说"开始做需求/接需求/实现这个功能/重构 X/接 X 链/加 X 平台"且跨 3+ 文件。不适用：纯 bug 排查（diagnose）、单文件小改、纯讨论方案、查埋点查交易。
+description: 把"开始做需求"落到 .workflow/<task-id>/ 标准目录，强制 spec.md（含排除范围）+ plan.md（含验证证据），衔接 writing-plans / subagent-driven-development / verification-before-completion / <domain-feature>。触发：消息含 Jira 号（PROJECT-数字）、`.workflow/` 路径，或说"开始做需求/接需求/实现这个功能/重构 X/接 X 链/加 X 平台"且跨 3+ 文件。不适用：纯 bug 排查（diagnose）、单文件小改、纯讨论方案、查埋点查交易。按**谁执行**分流：本会话自己动手实现走本 skill；要写一份任务书交给**另一个 agent 独立跑完**（目标模式、无人值守、每周重复的活）→ `goal-plan`。
 ---
 
 # enforce-workflow-schema：规格驱动开发的本地执行器

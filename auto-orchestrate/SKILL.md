@@ -1,8 +1,9 @@
 ---
 name: auto-orchestrate
-description: >
-  多任务编排：独立lane并行，依赖同lane串行，审查后集成。
-  触发：自动编排、orchestrate。
+description: |
+  **本地 git 多 lane 编排**：独立 lane 并行、有依赖的同 lane 串行，每个工作单元产出任务分支提交 + diff package + 独立审查 + 验证证据，最后组合到临时 integration 分支（不自动合入目标分支）。触发："自动编排"、"用 lane 并行做这几件事"、"编排一下这个多单元任务"。
+  用本 skill 的前提（缺一就别用）：至少两个边界清楚的实现或文档工作单元；它们文件所有权不重叠；产出需要逐 lane 审查和证据。
+  分流：在 Orca 环境里、要 Orca 的 threaded message / DAG / ask-reply / decision gate → `orchestration`；只是派几个子 agent 并行查资料或扫代码 → 不用编排 skill，主会话按 CLAUDE.md 的委派纪律直接派（单批 ≤4）；单个连续任务 → 主会话直接做，别为流程而拆 lane。
 ---
 
 # Auto Orchestrate

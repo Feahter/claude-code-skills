@@ -1,5 +1,6 @@
 ---
 name: rxjs-master
+disable-model-invocation: true
 description: "RxJS / Observable 响应式编程专家。当用户在 TS/JS 代码里写、读、调、重构 RxJS 时触发，覆盖操作符选型、订阅管理与内存泄漏、错误处理与重试、marble 测试、性能调优、Promise 互转、Angular Signals 与 React hooks 互操作、响应式模式设计。只要代码出现 Observable / pipe / Subject 或用户提到响应式流 / reactive stream 就应触发，中英文请求均适用。不适用于纯 Promise / async-await 代码、RxJS 安装构建问题、一行玩具级问答。"
 ---
 

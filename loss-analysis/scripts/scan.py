@@ -15,6 +15,7 @@
 - serial_explore_runs: 探索类工具串行长链统计
 """
 import argparse
+import difflib
 import json
 import re
 from collections import Counter, defaultdict
@@ -43,7 +44,8 @@ ROLLBACK_RE = re.compile(
     re.IGNORECASE,
 )
 
-# 必须排除的系统注入前缀
+# 必须排除的系统注入前缀。isMeta 没打标的那部分(压缩续接/slash command/
+# task-notification 等)只能靠这里的正则,见 is_real_user_text。
 SYSTEM_INJECTION_PATTERNS = [
     r"^This session is being continued",
     r"^<SUBAGENT-STOP>",
@@ -93,6 +95,129 @@ def is_correction(text, has_prior_assistant):
     return bool(has_prior_assistant and COR_RE.search(text))
 
 
+def find_tool_use(records, idx, tool_id, window=30):
+    """从 idx 往前找发起这条 tool_result 的 tool_use.
+
+    窗口内每一条 assistant 记录都要查:tool_result 对应的 tool_use 未必在最近
+    那条 assistant 里,并行调用和中间插入的记录会把两者隔开(实测间距 2-13 条)。
+    找到第一条 assistant 就停会漏掉约 4% 的失败归类,窗口取 10 也不够。
+    """
+    for back_idx in range(idx - 1, max(-1, idx - window), -1):
+        prev = records[back_idx][1]
+        if prev.get("type") != "assistant":
+            continue
+        for tc in get_tool_calls(prev.get("message", {})):
+            if tc.get("id") == tool_id:
+                return tc
+    return None
+
+
+def result_text(block):
+    """tool_result 的 content 可能是字符串,也可能是 text block 列表."""
+    t = block.get("content", "")
+    if isinstance(t, list):
+        t = " ".join(x.get("text", "") for x in t if isinstance(x, dict))
+    return str(t)
+
+
+# --- 工具失败的签名分桶 ---
+# 桶名前缀含义:A=门禁与环境限制, B=工具用法错, C=shell 用法错, D=超时中断,
+# E=正常语义的非零退出(误报), F=命令自身报错。归因时先扣掉 A 和 E 两类。
+# 判定按下面的书写顺序短路,保证互不重叠——尤其别用 startswith("Exit code 1")
+# 兜底,它会把 143/128/129 一起吃进去导致重复计数。
+BUILD_TOOL_RE = re.compile(
+    r"\b(yarn|npm|npx|pnpm|vitest|jest|pytest|tsc|eslint|playwright|cargo|make)\b"
+)
+SEARCH_CMD_RE = re.compile(r"\b(grep|rg|ug|diff)\b")
+
+
+def fail_bucket(err, cmd):
+    """把一条工具失败归到互不重叠的类别。
+
+    只看错误文本和命令,不看工具名——同一类问题(权限门、参数校验)会出现在
+    不同工具上。返回的桶名带前缀,方便在报告里按性质分组。
+    """
+    e = err or ""
+    c = cmd or ""
+    # A 门禁与环境:不是缺陷,是机制在正常工作或外部能力缺失
+    if "Blocked: sleep" in e:
+        return "A1 harness 拦截 sleep 前台轮询"
+    if "auto mode classifier" in e:
+        return "A2 auto mode 分类器拦截"
+    if ("doesn't want to proceed" in e or "has been denied" in e
+            or "haven't granted it yet" in e):
+        return "A3 用户/权限门拒绝"
+    if "isolated in the worktree" in e:
+        return "A4 worktree 隔离拦截"
+    if ("deny rule" in e or "denied by your permission settings" in e
+            or "Access denied" in e):
+        return "A5 permission deny 配置命中"
+    if "claude.ai login" in e:
+        return "A6 Artifact 需要 claude.ai 登录"
+    if ("is not supported for this model" in e or "not indexed" in e
+            or "channel_not_found" in e or "has been closed" in e
+            or "temporarily unavailable" in e):
+        return "A7 外部服务/网关能力缺失"
+    # B 工具用法
+    if "InputValidationError" in e:
+        return "B1 工具参数校验失败"
+    if "String to replace not found" in e or "replace_all is false" in e:
+        return "B2 Edit 目标串不匹配"
+    if "has not been read yet" in e:
+        return "B3 未先 Read 就写"
+    # C shell 用法
+    if re.search(r"\(eval\):cd:|cd:\d+: no such file or directory", e):
+        return "C1 cd 相对路径失败"
+    if ("bad substitution" in e or "no matches found" in e
+            or "read-only variable" in e):
+        return "C2 zsh 方言不兼容"
+    if "command not found" in e or re.match(r"Exit code 127\b", e.strip()):
+        return "C3 命令不存在"
+    # D 超时与中断
+    if re.match(r"Exit code 143\b", e.strip()):
+        return "D1 命令被超时杀掉(143)"
+    if re.match(r"Exit code (129|128)\b", e.strip()):
+        return "D2 退出码 128/129"
+    # E 正常语义的非零退出 / F 真报错
+    if re.match(r"Exit code (1|2)\b", e.strip()):
+        # 检索比较类命令无匹配时非零是正常语义。但命令里出现构建或测试工具时
+        # 不能这么算,那种非零是真实失败(实测 `yarn typecheck` 报 TS2307 被误
+        # 归进来过),所以要显式排除,也不要拿 \btest\b 当检索特征——它会匹配
+        # `yarn test`、路径名和项目名。
+        if (SEARCH_CMD_RE.search(c) and not BUILD_TOOL_RE.search(c)
+                and len(e.strip().split("\n")) <= 2):
+            return "E1 检索/比较类无匹配(正常语义)"
+        if "File does not exist" in e or "No such file or directory" in e:
+            return "E2 路径不存在(多为探测)"
+        return "F1 命令/脚本自身报错"
+    return "F2 其他"
+
+
+# 失败之后的下一步行为:相似度用来区分"原样重试"(真返工)和"换方向"(探到
+# 边界就走,不是返工)。别把失败数直接当返工数,两者实测差 6 倍。
+RETRY_NEAR_IDENTICAL = 0.85
+RETRY_PARTIAL = 0.6
+
+
+def norm_cmd(c):
+    return re.sub(r"\s+", " ", c or "").strip()
+
+
+def next_bash_cmds(records, idx, limit=3, window=40):
+    """取 idx 之后最近的几条 Bash 命令,用于判断失败后是重试还是换方向."""
+    out = []
+    for j in range(idx + 1, min(len(records), idx + window)):
+        r = records[j][1]
+        if r.get("type") != "assistant":
+            continue
+        for tc in get_tool_calls(r.get("message", {})):
+            if tc.get("name") == "Bash":
+                out.append(norm_cmd((tc.get("input") or {}).get("command", "")))
+        if len(out) >= limit:
+            break
+    return out[:limit]
+
+
 EXPLORE_TOOLS = {"Read", "Grep", "Glob", "LS"}
 
 
@@ -129,8 +254,16 @@ def get_tool_calls(msg):
     return [b for b in content if isinstance(b, dict) and b.get("type") == "tool_use"]
 
 
-def is_real_user_text(msg):
-    """过滤 tool_result 伪装、系统注入."""
+def is_real_user_text(msg, is_meta=False):
+    """过滤 tool_result 伪装、系统注入.
+
+    记录顶层的 isMeta=True 是 CLI 自己给注入内容打的标记(skill 正文、Stop hook
+    feedback、Goal check-in、图片引用、coordinator 消息等),比文本前缀可靠,且对
+    以后新增的注入类型自动生效。但它不覆盖压缩续接、slash command 和
+    task-notification 这些没打标的注入,所以两个判据是 OR 关系,都要保留。
+    """
+    if is_meta:
+        return False, ""
     content = msg.get("content")
     if isinstance(content, list):
         for b in content:
@@ -196,6 +329,12 @@ def main():
     })
     global_stats = Counter()
     correction_examples, unverified_examples, rollback_examples = [], [], []
+    fail_buckets = Counter()
+    fail_bucket_examples = defaultdict(list)
+    retry_after_fail = Counter()
+    monthly = defaultdict(lambda: {
+        "sessions": 0, "tool_calls": 0, "failures": 0, "buckets": Counter(),
+    })
     tool_fail_breakdown = Counter()
     tool_fail_examples = defaultdict(list)
     duplicate_read_top = []
@@ -231,6 +370,7 @@ def main():
         ps["sessions"] += 1
         ps["session_span_sec"] += (last_ts - first_ts).total_seconds() if last_ts else 0
         global_stats["sessions"] += 1
+        monthly[first_ts.strftime("%Y-%m")]["sessions"] += 1
 
         file_reads = defaultdict(list)
         last_assistant = {"text": "", "tools": []}
@@ -272,28 +412,52 @@ def main():
                             global_stats["tool_failures"] += 1
                             ps["tool_failures"] += 1
                             tool_id = b.get("tool_use_id")
-                            for back_idx in range(idx - 1, max(-1, idx - 10), -1):
-                                prev = records[back_idx][1]
-                                if prev.get("type") != "assistant":
-                                    continue
-                                for tc in get_tool_calls(prev.get("message", {})):
-                                    if tc.get("id") == tool_id:
-                                        name = tc.get("name", "?")
-                                        tool_fail_breakdown[name] += 1
-                                        if len(tool_fail_examples[name]) < 4:
-                                            err_text = b.get("content", "")
-                                            if isinstance(err_text, list):
-                                                err_text = " ".join(
-                                                    x.get("text", "") for x in err_text if isinstance(x, dict)
-                                                )
-                                            tool_fail_examples[name].append({
-                                                "project": proj,
-                                                "tool_input": str(tc.get("input"))[:300],
-                                                "error": str(err_text)[:300],
-                                            })
-                                        break
-                                break
-                real, text = is_real_user_text(msg)
+                            tc = find_tool_use(records, idx, tool_id)
+                            err_text = result_text(b)
+                            month = (r.get("timestamp") or "")[:7]
+                            name, cmd = "(未回溯到调用)", ""
+                            if tc is not None:
+                                name = tc.get("name", "?")
+                                tinput = tc.get("input")
+                                cmd = (tinput or {}).get("command", "") if isinstance(tinput, dict) else ""
+                                if len(tool_fail_examples[name]) < 4:
+                                    tool_fail_examples[name].append({
+                                        "project": proj,
+                                        "tool_input": str(tinput)[:300],
+                                        "error": err_text[:300],
+                                    })
+                            tool_fail_breakdown[name] += 1
+                            bucket = fail_bucket(err_text, cmd)
+                            fail_buckets[bucket] += 1
+                            if month:
+                                monthly[month]["failures"] += 1
+                                monthly[month]["buckets"][bucket] += 1
+                            if len(fail_bucket_examples[bucket]) < 3:
+                                fail_bucket_examples[bucket].append({
+                                    "project": proj,
+                                    "ts": r.get("timestamp"),
+                                    "tool": name,
+                                    "cmd": cmd[:220],
+                                    "error": err_text[:220],
+                                })
+                            if name == "Bash":
+                                cands = next_bash_cmds(records, idx)
+                                if not cands:
+                                    retry_after_fail["no_followup"] += 1
+                                else:
+                                    sim = max(
+                                        difflib.SequenceMatcher(
+                                            None, norm_cmd(cmd)[:400], x[:400]
+                                        ).ratio()
+                                        for x in cands
+                                    )
+                                    if sim >= RETRY_NEAR_IDENTICAL:
+                                        retry_after_fail["retry_near_identical"] += 1
+                                    elif sim >= RETRY_PARTIAL:
+                                        retry_after_fail["retry_partial"] += 1
+                                    else:
+                                        retry_after_fail["moved_on"] += 1
+                real, text = is_real_user_text(msg, bool(r.get("isMeta")))
                 if not real:
                     if isinstance(content, list) and any(
                         isinstance(b, dict) and b.get("type") == "tool_result" for b in content
@@ -340,6 +504,10 @@ def main():
             elif rtype == "assistant":
                 global_stats["assistant_msgs"] += 1
                 tools = get_tool_calls(r.get("message", {}))
+                if tools:
+                    m = (r.get("timestamp") or "")[:7]
+                    if m:
+                        monthly[m]["tool_calls"] += len(tools)
                 mid = r.get("message", {}).get("id")
                 # 并行率/串行链按逻辑轮次(message.id)判定:同一轮被拆成的多条记录只算一次,
                 # 工具数取预扫归并后的真实总数,避免把并行轮误判成一串单发。
@@ -485,6 +653,26 @@ def main():
         ],
         "tool_fail_breakdown": dict(tool_fail_breakdown.most_common()),
         "tool_fail_examples": dict(tool_fail_examples),
+        "fail_buckets": dict(fail_buckets.most_common()),
+        "fail_bucket_examples": dict(fail_bucket_examples),
+        "retry_after_fail": dict(retry_after_fail),
+        "monthly": [
+            {
+                "month": m,
+                "sessions": v["sessions"],
+                "tool_calls": v["tool_calls"],
+                "failures": v["failures"],
+                "fail_rate_pct": round(v["failures"] / v["tool_calls"] * 100, 2)
+                if v["tool_calls"] else 0,
+                # 按调用量归一化后才能跨月比较:某类要不要提建议看这个趋势,
+                # 不看绝对数(绝对数最大的那类可能正在自行收敛)。
+                "buckets_per_1k_calls": {
+                    k: round(c / v["tool_calls"] * 1000, 2)
+                    for k, c in v["buckets"].most_common()
+                } if v["tool_calls"] else {},
+            }
+            for m, v in sorted(monthly.items())
+        ],
         "duplicate_read_top": duplicate_read_top[:20],
         "correction_examples": correction_examples[:25],
         "rollback_examples": rollback_examples[:15],
@@ -508,6 +696,11 @@ def main():
         "multi_tool_turns": multi_tool,
         "serial_long_segments": serial_long,
         "serial_max_length": max((r["length"] for r in serial_runs), default=0),
+        "fail_buckets_top6": dict(fail_buckets.most_common(6)),
+        "retry_after_fail": dict(retry_after_fail),
+        "monthly_fail_rate_pct": {
+            m["month"]: m["fail_rate_pct"] for m in out["monthly"]
+        },
         "output_path": str(out_path),
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
