@@ -53,3 +53,4 @@ cp -R <skill-name> ~/.claude/skills/
 - `enforce-workflow-schema` / `tame-frontend`：项目名与领域 skill 名替换为 `your-app` / `<domain-feature>` / `<chain-integration>`，Jira 前缀替换为 `PROJ-`。
 - `loss-analysis/scripts/test_scan.py`：测试用例里的仓库名替换为 `demo-app` / `demo-web-test`，本机 home 路径替换为 `/Users/me/`。替换处只是测试输入字符串，替换后单测全绿。
 - `test-strategist/evals/`：实测样例中的内部包名与主项目替换为 `@scope/utils` / `shared-utils` / `main-app`，技术细节（函数名、选项名、行号）原样保留，替换后门禁脚本仍通过。
+- `auto-grill`：Step 0 预取与 Step 7 沉淀里的实测例子做了替换——本机 home slug 替换为 `-Users-me`，项目名替换为 `demo-app` / `demo-web-test`。其中 `~/.claude/projects/-Users-me/memory/feedback_judgment-defaults.md` 是 skill 正文里唯一的硬编码绝对路径，安装后需改成自己 home 对应的 slug，否则 Step 0 那一步只会静默读不到。
