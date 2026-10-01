@@ -1,0 +1,17 @@
+{
+  "skill_name": "context-optimizer",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "帮我做一下这个客服 Agent 的上下文优化，提示词在 support-agent-prompt.md，线上数据在 support-agent-metrics.md。",
+      "expected_output": "两步分析（冷启动与前缀、注意力噪音），每步一张 优先级|问题|ROI 理由|具体优化动作 表，各给一版完整优化后提示词，最后 3-5 句总结；数字标来源；指出动态变量放在开头导致缓存失效、知识库常驻、规则冲突（详细 vs 简洁、markdown 冲突）、过期活动规则、废弃工具、重复示例。",
+      "files": ["fixtures/support-agent-prompt.md", "fixtures/support-agent-metrics.md"]
+    },
+    {
+      "id": 1,
+      "prompt": "我本机 Claude Code 的上下文前缀现在多大？看看有哪些能优化的，先别改文件，给我报告。",
+      "expected_output": "从 ~/.claude/projects 下会话 jsonl 实测前缀（不只用 /context 或文件字数估算），给出构成与缓存情况，两步 ROI 表，数字标实测/推算，不修改任何配置文件。",
+      "files": []
+    }
+  ]
+}

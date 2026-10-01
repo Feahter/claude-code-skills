@@ -34,6 +34,7 @@ cp -R <skill-name> ~/.claude/skills/
 | [goal-plan](./goal-plan) | 把一句话想法写成 agent 能独立跑完的目标任务书：先实测再提问，产出含实测数字、白名单地界、防作弊验收与断点续跑的 brief |
 | [clean-stale-branches](./clean-stale-branches) | 按 `user.email` 过滤，清理 N 天外的本地与远端分支：已合并的先安全删，未合并的列清单待确认，远端删除二次确认，支持 dry-run 与 reflog 恢复 |
 | [night-run](./night-run) | macOS 全局防睡眠开关，用一条后台 caffeinate 让长任务不被系统睡眠冻结，与会话解耦 |
+| [context-optimizer](./context-optimizer) | 按 ROI 诊断 Agent 上下文：先量冷启动与平均前缀的构成和缓存命中，再查冗余指令、多重目标竞争等注意力噪音，逐步给出优先级表和优化后的完整内容；本机 Claude Code / Codex 配置可直接从会话 jsonl 实测 |
 | [auto-grill](./auto-grill) | 代答式拷问：把需求交给隔离的子 agent 当审问官逐轮出题，自己代替用户答题并查证事实，最后交一份带依据标注与「待你确认」区的共识方案 |
 
 ## Skill 之间的配合
