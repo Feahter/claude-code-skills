@@ -94,7 +94,32 @@ class FailBucketTests(unittest.TestCase):
         # 可能来自构建工具本身，不能算检索无匹配。去掉那个排除这条就会变红。
         self.assertEqual(
             scan.fail_bucket("Exit code 1", "yarn test 2>&1 | grep -c 'passed'"),
-            "F1 命令/脚本自身报错",
+            "F1b 构建/测试命令非零",
+        )
+
+    def test_build_failure_with_type_error_is_not_script_error(self):
+        # 测试失败的输出常带 TypeError。构建工具判定挪到脚本错误签名之后，
+        # 这条就会变红（归成 F1a）。
+        self.assertEqual(
+            scan.fail_bucket("Exit code 1\nTypeError: x is undefined\n 3 failed", "yarn vitest run"),
+            "F1b 构建/测试命令非零",
+        )
+
+    def test_interpreter_error_is_script_error(self):
+        self.assertEqual(
+            scan.fail_bucket("Exit code 1\nTraceback (most recent call last):\n  File \"<string>\"", "python3 -c 'import x'"),
+            "F1a 脚本语法/运行时错误",
+        )
+        self.assertEqual(
+            scan.fail_bucket("Exit code 2\nawk: syntax error at source line 1", "awk '{a[NR]=$1}' f"),
+            "F1a 脚本语法/运行时错误",
+        )
+
+    def test_trailing_probe_failure_is_other_nonzero(self):
+        # 多段命令前面已经有有效输出，只是末环非零。
+        self.assertEqual(
+            scan.fail_bucket("Exit code 2\ncheck-this: 非git\n/Users/x/.skill-lock.json", "for s in a b; do git -C $s rev-parse; done; ls x y"),
+            "F1c 其他非零(多为多段命令末环)",
         )
 
     def test_test_in_path_is_not_a_search_feature(self):

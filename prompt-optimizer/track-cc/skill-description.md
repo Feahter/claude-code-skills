@@ -22,16 +22,21 @@
 
 ### 简洁和可判定
 
-description 常驻技能列表，应尽量短，但不能为了省 token 删除决定是否触发所需的信息。把执行步骤、输出模板和内部方法留在正文。
+description 常驻技能列表，应尽量短，但不能为了省 token 删除决定是否触发所需的信息。把执行步骤、输出模板和内部方法留在正文。Claude Code 的技能列表有字符预算，超了按使用频率分配描述，低频 skill 的描述越长越容易被整段挤掉，所以长度本身会影响它能不能被看到。
 
 ## 诊断触发问题
 
-用户提供“应该触发但没触发”或“不该触发却触发”的原话时：
+先确认 description 在选择时刻真的可见。看系统提示词里技能列表的实际显示，不看文件：
+
+- 只显示名字：列表超了字符预算，这个 skill 使用分数太低，分不到描述。改措辞没有用。要么在 settings 的 `skillOverrides` 里把不需要模型自动调用的 skill 设成 `name-only`，给它腾出预算；要么提高 `skillListingBudgetFraction`，代价是每轮上下文变大。
+- 描述在半句处断掉：YAML 把「空格+#」当成注释截掉了后半段，或者超过了单条 1536 字符的上限。先修这个再谈措辞。
+
+可见性没问题后，用户提供“应该触发但没触发”或“不该触发却触发”的原话时：
 
 1. 保留原话，不先改写样本。
 2. 判断样本表达的是能力范围、对象、动作还是边界信号。
 3. 检查当前 description 是否缺少该信号，或被相邻 Skill 更强地匹配。
-4. 样本较多或用户要求验证时，用新旧 description 做 should-trigger / should-not-trigger eval；不要把单个子 agent 的主观判断称为真实结论。
+4. 样本较多或用户要求验证时，用新旧 description 做 should-trigger / should-not-trigger eval；不要把单个子 agent 的主观判断称为真实结论。评测用的临时命令同样没有使用分数，`claude -p` 子进程要设大的 `SLASH_COMMAND_TOOL_CHAR_BUDGET`，否则测到的只是名字。skill-creator 的 `run_eval.py` 已经内置这一设置。
 
 ## 改写原则
 

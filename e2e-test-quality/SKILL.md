@@ -192,7 +192,7 @@ playbook 是写测试的引擎，本 skill 是评测试的尺子。**同一条�
 - **重写 / 补 E2E 用例** → `playbook`（四阶段引擎，从 `.playbook/project.json` 探测起）
 - **改进项判定"该下沉单测 / 集成"** → 同样交 `playbook`，走 `test-pyramid.md` 分层 + `unit-integration.md` 承接，别在 E2E 层硬修
 - **审核时想看页面真实状态**（截图 / 控制台报错 / 选择器实际命中） → `webapp-testing`
-- **测试代码本身的代码质量**（命名、重复、类型） → `cr-master`
+- **测试代码本身的代码质量**（命名、重复、类型） → `open-code-review`
 
 反向：playbook 阶段 4 校验完想要一份质量基线或打分时，回调本 skill。
 

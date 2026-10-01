@@ -129,6 +129,11 @@ BUILD_TOOL_RE = re.compile(
     r"\b(yarn|npm|npx|pnpm|vitest|jest|pytest|tsc|eslint|playwright|cargo|make)\b"
 )
 SEARCH_CMD_RE = re.compile(r"\b(grep|rg|ug|diff)\b")
+SCRIPT_ERROR_RE = re.compile(
+    r"Traceback \(most recent call last\)|\b\w*(Syntax|Type|Reference|Name|"
+    r"Attribute|Key|Index|Value|ModuleNotFound|Import)Error\b|syntax error|"
+    r"parse error|jq: error|unexpected (token|EOF)"
+)
 
 
 def fail_bucket(err, cmd):
@@ -189,7 +194,15 @@ def fail_bucket(err, cmd):
             return "E1 检索/比较类无匹配(正常语义)"
         if "File does not exist" in e or "No such file or directory" in e:
             return "E2 路径不存在(多为探测)"
-        return "F1 命令/脚本自身报错"
+        # F1 再拆三层,因为三者性质不同:构建测试变红多是开发中的正常信号;
+        # 解释器报语法或运行时错误才是现场写错了命令;其余多为多段命令末环
+        # 非零,前面的有效输出往往已经拿到。构建工具要先判,测试失败的输出
+        # 里常带 TypeError 之类的字样,不能归成脚本写错。
+        if BUILD_TOOL_RE.search(c):
+            return "F1b 构建/测试命令非零"
+        if SCRIPT_ERROR_RE.search(e):
+            return "F1a 脚本语法/运行时错误"
+        return "F1c 其他非零(多为多段命令末环)"
     return "F2 其他"
 
 

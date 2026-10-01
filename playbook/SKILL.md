@@ -247,4 +247,4 @@ bash ~/.claude/skills/playbook/scripts/validate-test.sh tests/<file>.spec.ts
 - `webapp-testing`：阶段 4 校验失败时，调用它跑 dev server 抓页面状态
 - `dispatching-parallel-agents`：阶段 4.5 派 agent 时遵循其方法论
 - `verify` / `run`：用户需要手动看效果时调用
-- `cr-master`：测试代码写完后让它审一遍（审代码质量，不审测试有效性——后者是 `e2e-test-quality`）
+- `open-code-review`：测试代码写完后让它审一遍（审代码质量，不审测试有效性——后者是 `e2e-test-quality`）
