@@ -1,9 +1,8 @@
 ---
 name: prompt-optimizer
 description: |
-  **手工精修一份已有 prompt 的文本**——触发、结构和文风，改一次改到位，不跑自动循环。适用于 Codex / Claude Code 的 Skill description 与正文、agent prompt、AGENTS.md / CLAUDE.md、Output Style、command / hook，以及 Anthropic API prompt（按资产类型读对应方法卡）。用户要求"优化提示词""skill 没触发""规则没生效""改写 system 或 agent prompt""这段提示词帮我改改"，或直接给出 prompt 文件时使用；可直接改文件，也可只审计给建议，或结合失败样本做 eval。也负责把本次会话暴露的问题写回某个 skill 的正文（"刚才那个 skill 表现不好，记进它里面""把这个经验写进 skill"）；要记的是协作偏好、项目事实或判断方式时不用本 skill，主会话按 CLAUDE.md「经验主动沉淀」直接写 memory。
-  三方分流——skill 元工具只此三个，按**要什么动作**选：手工精修已有 prompt 或 skill 文本 → 本 skill（单个 skill 触发不准、改一份 description、把会话反馈写回 skill 正文、调 agent prompt 或 CLAUDE.md 都归这里）；从零新建 skill → `skill-creator`；要机器自动多轮迭代 + 独立 judge 打分 + 自动 keep/revert，或要按 rubric 出分数 → `darwin-skill`。
-  不适用：**多个 skill 互抢触发、彼此边界模糊**——那不是文本问题，是资产架构决策，主会话直接重划分工，不要在这里逐个优化 description；目标是压前缀 token、治冷启动或按 ROI 排注意力噪音（"上下文优化""前缀太长""常驻内容占多少"）→ `context-optimizer`；模型选型；代码逻辑 bug。
+  **手工精修一份已有 prompt 的文本**：触发、结构和文风，改一次到位，不跑自动循环。对象包括 Codex / Claude Code 的 Skill description 与正文、agent prompt、AGENTS.md / CLAUDE.md、Output Style、command / hook，以及 Anthropic API prompt（按资产类型读对应方法卡）。用户要求"优化提示词""skill 没触发""规则没生效""改写 system 或 agent prompt""这段提示词帮我改改"，或直接给出 prompt 文件时使用；可直接改文件，也可只审计给建议，或结合失败样本做 eval。也负责把本次会话暴露的问题写回某个 skill 的正文（"刚才那个 skill 表现不好，记进它里面""把这个经验写进 skill"）；要记的是协作偏好、项目事实或判断方式时直接写 memory，不用本 skill。
+  分流：从零新建 skill → `skill-creator`；自动多轮迭代 + 独立 judge 打分 + 自动 keep/revert，或按 rubric 出分 → `darwin-skill`；压前缀 token、治冷启动、排注意力噪音（"上下文优化""前缀太长""常驻内容占多少"）→ `context-optimizer`。多个 skill 互抢触发、边界模糊是资产架构决策，不在这里逐个改 description（见 CLAUDE.md 消歧节）。不适用：模型选型、代码逻辑 bug。
 ---
 
 # Prompt Optimizer
@@ -56,6 +55,7 @@ description: |
 - 涉及具体 SDK、模型版本或产品机制时，先查当前官方文档，不沿用记忆中的参数技巧。
 - 用户只提供片段时保持相同粒度，除非补全上下文是实现目标所必需的。
 - 自己复读 prompt、检查断言或设想几个场景属于静态自检，不称为“回放、A/B、eval”或实际效果验证。
+- 被改的 skill 目录下有 `evals/` 时，改前、改后各跑一次其中的确定性检查或用例，把两次结果写进交付说明；没有确定性检查的，标明只做了静态自检。
 
 ## 完成前检查
 

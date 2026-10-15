@@ -8,7 +8,8 @@ B 类对象不问用户要数字，按本卡自己量。下面的数字和行为
 
 ```bash
 # 会话文件：~/.claude/projects/<slug>/<sessionId>.jsonl，slug 是工作目录把 / 换成 -
-f=$(ls -t ~/.claude/projects/<slug>/*.jsonl | head -1)
+# 本机 ls 是 eza 别名，ls -t 会静默给错顺序，必须写 command ls。取到后再用本会话独有的字符串 grep -l 交叉确认
+f=$(command ls -t ~/.claude/projects/<slug>/*.jsonl | head -1)
 jq -c 'select(.type=="assistant" and .message.usage!=null)
   | {id:.message.id, in:.message.usage.input_tokens,
      cw:.message.usage.cache_creation_input_tokens,
@@ -17,6 +18,7 @@ jq -c 'select(.type=="assistant" and .message.usage!=null)
 
 - 每轮前缀 = `in + cw + cr`。首轮的值近似等于固定前缀。
 - 同一条 assistant 消息会因为分块输出写多行，usage 完全相同。按 `message.id` 去重，否则轮数和总量都会翻倍。
+- `message.model == "<synthetic>"` 的条目（超时、输出超限等错误）usage 全为 0，常出现在长会话末尾。取「最后一轮」时要排除，否则会读成 0。
 - `cr` 占比高说明缓存命中良好。`cw` 持续很大时先看轮间隔，再下"缓存在重建"的结论：间隔都在 5 分钟内时，缓存不会过期，这些写入是对话增量。
 
 多会话汇总（看平均前缀和长会话占比）：

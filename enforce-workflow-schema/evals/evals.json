@@ -1,0 +1,87 @@
+{
+  "skill_name": "enforce-workflow-schema",
+  "evals": [
+    {
+      "id": 1,
+      "name": "cli-dry-run-three-files",
+      "case_type": "should_trigger",
+      "critical": true,
+      "prompt": "给这个 Python CLI 加一个 --dry-run 选项：sync 子命令只打印将要执行的动作而不写盘。需要改 cli.py、sync.py、utils.py 三个文件，先把需求落成文档再动手实现。",
+      "expected_output": "识别为跨 3 个文件的功能需求，用 YYYY-MM-DD-<topic> 或功能名作 task-id，在当前项目下创建 .workflow/<task-id>/，产出 spec.md 与 plan.md。",
+      "files": [],
+      "expectations": [
+        "项目下生成了 .workflow/<task-id>/spec.md 与 plan.md 两个文件。",
+        "grade_workflow.py 对该目录（不带 --require-evidence）退出码为 0。",
+        "spec.md 的排除范围区块至少有一条非占位的列表项。",
+        "plan.md 不含未替换的模板占位符。"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "jira-id-task-dir",
+      "case_type": "should_trigger",
+      "critical": true,
+      "prompt": "接需求 PAY-2417：给 sync 子命令增加 --exclude 参数，按 glob 跳过匹配的文件，涉及 cli.py、sync.py、utils.py 三个文件。",
+      "expected_output": "从消息中识别 Jira 号 PAY-2417 作为 task-id，创建 .workflow/PAY-2417/ 并产出 spec.md 与 plan.md。",
+      "files": [],
+      "expectations": [
+        "存在目录 .workflow/PAY-2417/。",
+        ".workflow/PAY-2417/ 下有 spec.md 与 plan.md，且 grade_workflow.py（不带 --require-evidence）退出码为 0。",
+        "spec.md 的排除范围区块至少有一条非占位的列表项。"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "write-spec-plan-first",
+      "case_type": "should_trigger",
+      "critical": false,
+      "prompt": "我要重构 sync.py 里的重试逻辑，影响 cli.py 和 utils.py。先写 spec 和 plan 再动手，不要直接改代码。",
+      "expected_output": "用户明确要求先写 spec 和 plan，应落到 .workflow/<task-id>/，task-id 无 Jira 号时用功能名或日期兜底；不应在写完文档前改源码。",
+      "files": [],
+      "expectations": [
+        "项目下生成了 .workflow/<task-id>/spec.md 与 plan.md。",
+        "grade_workflow.py 对该目录退出码为 0。",
+        "cli.py、sync.py、utils.py 的内容与初始提交相比没有改动（git diff 在这三个文件上为空）。"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "single-line-bugfix",
+      "case_type": "should_not_trigger",
+      "critical": true,
+      "prompt": "utils.py 里 clamp 函数把 min 和 max 写反了，上下界错位。直接改掉这一行就行。",
+      "expected_output": "属于单文件单行 bug 修复，不触发 enforce-workflow-schema，直接改代码，不创建 .workflow 目录。",
+      "files": [],
+      "expectations": [
+        "项目下不存在 .workflow 目录。",
+        "utils.py 的 clamp 函数已被修改。"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "pure-code-review",
+      "case_type": "should_not_trigger",
+      "critical": true,
+      "prompt": "帮我看看 sync.py 这个文件的代码质量，有什么问题和改进建议？只要审查意见，不要改任何文件。",
+      "expected_output": "属于纯 code review，不触发本 skill，只给审查意见，不创建 .workflow 目录，不改文件。",
+      "files": [],
+      "expectations": [
+        "项目下不存在 .workflow 目录。",
+        "git status 显示工作区没有改动。"
+      ]
+    },
+    {
+      "id": 6,
+      "name": "design-discussion-only",
+      "case_type": "should_not_trigger",
+      "critical": false,
+      "prompt": "我在犹豫 sync 的重试该用指数退避还是固定间隔，帮我分析下两者的取舍，先别动手做。",
+      "expected_output": "属于纯方案讨论，不触发本 skill，只做对比分析，不创建 .workflow 目录。",
+      "files": [],
+      "expectations": [
+        "项目下不存在 .workflow 目录。",
+        "git status 显示工作区没有改动。"
+      ]
+    }
+  ]
+}

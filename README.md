@@ -36,12 +36,16 @@ cp -R <skill-name> ~/.claude/skills/
 | [night-run](./night-run) | macOS 全局防睡眠开关，用一条后台 caffeinate 让长任务不被系统睡眠冻结，与会话解耦 |
 | [context-optimizer](./context-optimizer) | 按 ROI 诊断 Agent 上下文：先量冷启动与平均前缀的构成和缓存命中，再查冗余指令、多重目标竞争等注意力噪音，逐步给出优先级表和优化后的完整内容；本机 Claude Code / Codex 配置可直接从会话 jsonl 实测 |
 | [auto-grill](./auto-grill) | 代答式拷问：把需求交给隔离的子 agent 当审问官逐轮出题，自己代替用户答题并查证事实，最后交一份带依据标注与「待你确认」区的共识方案 |
+| [ts-type-gymnastics](./ts-type-gymnastics) | TypeScript 类型层的设计、排错与审计：工具类型与泛型签名、模板字面量与递归推导、TS2589 等类型报错、替换 any / as、tsconfig 与类型测试，示例按 TS 7.0 严格配置校验过 |
+| [ppt-engineering](./ppt-engineering) | PPT 的方法论与结构规划：需求分析、结构选型、内容工程、视觉设计原则，只出规划不出成品文件 |
 
 ## Skill 之间的配合
 
 - `auto-orchestrate` 是父编排器，把任务拆成 lane 后以 `owner: craft` 派发；`craft` 负责单个工作单元的实现与自证。两者建议成对安装，单独装 `auto-orchestrate` 会让派发目标悬空。
 - 测试三角：`test-strategist` 决定**测什么**（风险与优先级），`playbook` 决定**怎么测**（分层、写法、稳定性），`e2e-test-quality` 决定**测得好不好**（打分与验收）。三者互相按绝对路径引用对方的 references 做单一事实源，建议整套安装；只装其中一个可用，但跨 skill 的引用会指向不存在的路径。
 - `auto-grill` 的 description 按「谁答题」与 `grilling` / `grill-me` 分流、按「有没有对抗方」与 `think-rigorously` 分流。后者在本仓库内，前两个是社区 skill、不在本仓库，未装时只是分流句指向不存在的 skill，不影响 `auto-grill` 自身运行。
+- `ppt-engineering` 只管规划，成品交给 `guizang-ppt-skill` 或 `frontend-slides`。这两个是社区 skill、不在本仓库，未装时只是分流句指向不存在的 skill。
+- `ts-type-gymnastics` 的内容整合自 wshobson/agents、ofershap、mattpocock/skills 的相关 skill，再按 TypeScript 7.0 改写校正，来源在其 `SKILL.md` 开头注明。
 
 ## 额外依赖
 
@@ -51,7 +55,7 @@ cp -R <skill-name> ~/.claude/skills/
 
 仓库版本对公司项目名做了占位替换，与本地实际运行版本存在预期内的差异，同步时不要反向覆盖：
 
-- `enforce-workflow-schema` / `tame-frontend`：项目名与领域 skill 名替换为 `your-app` / `<domain-feature>` / `<chain-integration>`，Jira 前缀替换为 `PROJ-`。
+- `enforce-workflow-schema` / `tame-frontend`：项目名与领域 skill 名替换为 `your-app` / `<domain-feature>` / `<chain-integration>`，Jira 前缀替换为 `PROJ-`。`enforce-workflow-schema/evals/` 沿用同一映射，`run_baseline.sh` 里 claude 可执行文件的 home 路径替换为 `/Users/me/`，跑之前改成本机路径；基线报告里的任务目录名和通过率是实测数据，原样保留。
 - `loss-analysis/scripts/test_scan.py`：测试用例里的仓库名替换为 `demo-app` / `demo-web-test`，本机 home 路径替换为 `/Users/me/`。替换处只是测试输入字符串，替换后单测全绿。
 - `test-strategist/evals/`：实测样例中的内部包名与主项目替换为 `@scope/utils` / `shared-utils` / `main-app`，技术细节（函数名、选项名、行号）原样保留，替换后门禁脚本仍通过。
 - `auto-grill`：`SKILL.md`、`references/step7-sediment.md` 和 `evals/evals.json` 里的本机 home slug 替换为 `-Users-me`，项目名替换为 `demo-app`。其中 `~/.claude/projects/-Users-me/memory/feedback_judgment-defaults.md` 是 skill 正文里唯一的硬编码绝对路径，安装后需改成自己 home 对应的 slug，否则 Step 0 那一步只会静默读不到。
