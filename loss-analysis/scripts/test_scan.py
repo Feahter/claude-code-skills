@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
+import contextlib
+import io
+import json
+import sys
+import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
+from unittest import mock
 
 import scan
 
@@ -167,6 +174,11 @@ class RetryDetectionTests(unittest.TestCase):
     def test_next_bash_cmds_empty_at_tail(self):
         self.assertEqual(scan.next_bash_cmds(self._records(["only"]), 0), [])
 
+    def test_classify_retry(self):
+        self.assertEqual(scan.classify_retry("ls /a/b", []), "no_followup")
+        self.assertEqual(scan.classify_retry("ls /a/b", ["ls /a/b"]), "retry_near_identical")
+        self.assertEqual(scan.classify_retry("ls /a/b", ["git status"]), "moved_on")
+
 
 class VerificationSignalTests(unittest.TestCase):
     def test_pure_git_claim_does_not_require_test_signal(self):
@@ -174,6 +186,86 @@ class VerificationSignalTests(unittest.TestCase):
 
     def test_fix_claim_requires_test_signal(self):
         self.assertTrue(scan._needs_verify("问题已修复并提交"))
+
+    def test_code_edit_detection(self):
+        self.assertTrue(scan.is_code_edit({"name": "Edit", "input": {"file_path": "/x/a.tsx"}}))
+        self.assertTrue(scan.is_code_edit({"name": "Write", "input": {"file_path": "/x/scan.py"}}))
+        self.assertFalse(scan.is_code_edit({"name": "Write", "input": {"file_path": "/x/report.html"}}))
+        self.assertFalse(scan.is_code_edit({"name": "Edit", "input": {"file_path": "/x/MEMORY.md"}}))
+        self.assertFalse(scan.is_code_edit({"name": "Read", "input": {"file_path": "/x/a.ts"}}))
+
+    def test_verify_re_covers_project_test_runners(self):
+        for cmd in ["npx vitest run src", "npx playwright test e2e/", "python3 -m unittest -q", "python3 test_scan.py"]:
+            with self.subTest(cmd=cmd):
+                self.assertRegex(cmd, scan.VERIFY_RE)
+        self.assertNotRegex("npx playwright show-report", scan.VERIFY_RE)
+
+    def test_headless_session_detection(self):
+        self.assertTrue(scan.is_headless_session([(0, {"type": "queue-operation"}), (1, {"entrypoint": "sdk-cli"})]))
+        self.assertFalse(scan.is_headless_session([(0, {"entrypoint": "cli"})]))
+        self.assertFalse(scan.is_headless_session([(0, {"type": "user"})]))
+
+
+def _ts(i):
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", f".{i:03d}Z")
+
+
+def _user(text, i, entrypoint="cli"):
+    return {"type": "user", "entrypoint": entrypoint, "timestamp": _ts(i), "message": {"content": text}}
+
+
+def _assistant(i, text=None, tool=None):
+    content = []
+    if text:
+        content.append({"type": "text", "text": text})
+    if tool:
+        content.append({"type": "tool_use", "id": f"t{i}", **tool})
+    return {"type": "assistant", "timestamp": _ts(i), "message": {"id": f"m{i}", "content": content}}
+
+
+class ScanEndToEndTests(unittest.TestCase):
+    """把三处过滤串起来跑一遍 main(),确认接线正确而不只是辅助函数正确。"""
+
+    def _run(self, sessions):
+        with tempfile.TemporaryDirectory() as root:
+            proj = Path(root) / "-tmp-proj"
+            proj.mkdir()
+            for name, recs in sessions.items():
+                (proj / f"{name}.jsonl").write_text("\n".join(json.dumps(r) for r in recs))
+            out = Path(root) / "raw.json"
+            argv = ["scan.py", "--days", "1", "--output", str(out)]
+            with mock.patch.object(scan, "ROOT", Path(root)), mock.patch.object(sys, "argv", argv), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                scan.main()
+            return json.loads(out.read_text())
+
+    def test_headless_prompt_not_counted_as_rollback(self):
+        data = self._run({
+            "interactive": [_user("改一下", 0), _assistant(1, "好的"), _user("方向不对，重来", 2)],
+            "headless": [_user("你是帮我写每日工作日报的助手。不要自创样式，重来", 0, "sdk-cli"),
+                         _assistant(1, "1. 做了什么【已完成】"), _user("重来", 2, "sdk-cli")],
+        })
+        g = data["global"]
+        self.assertEqual(g["rollbacks"], 1)
+        self.assertEqual(g["user_msgs"], 2)
+        self.assertEqual(g["headless_msgs"], 2)
+
+    def test_unverified_only_counts_turns_that_edited_code(self):
+        edit = {"name": "Edit", "input": {"file_path": "/x/a.ts", "old_string": "a", "new_string": "b"}}
+        data = self._run({"s": [
+            _user("修个 bug", 0), _assistant(1, tool=edit), _assistant(2, "已修复"),
+            _user("发日报", 3), _assistant(4, "日报已完成发送"),
+        ]})
+        self.assertEqual(data["global"]["completion_no_verify"], 1)
+        self.assertEqual(data["unverified_examples"][0]["claim"], "已修复")
+
+    def test_retry_examples_recorded(self):
+        bash = {"name": "Bash", "input": {"command": "ls /nope"}}
+        fail = {"type": "user", "timestamp": _ts(2), "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "t1", "is_error": True, "content": "Exit code 1"}]}}
+        data = self._run({"s": [_user("看看", 0), _assistant(1, tool=bash), fail, _assistant(3, tool=bash)]})
+        self.assertEqual(data["retry_after_fail"], {"retry_near_identical": 1})
+        self.assertEqual(data["retry_examples"]["retry_near_identical"][0]["failed_cmd"], "ls /nope")
 
 
 if __name__ == "__main__":

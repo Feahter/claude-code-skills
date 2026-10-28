@@ -2,7 +2,7 @@
 name: ppt-engineering
 disable-model-invocation: true
 description: |
-  PPT 的**方法论与结构规划**，不产出成品文件：需求分析（时长 / 听众 / 目标）→ 结构选型 → 内容工程 → 视觉设计原则。用于"这场分享怎么讲""PPT 结构怎么排""优化 PPT 结构""怎么做技术分享""帮我规划下内容"。
+  PPT 的**方法论与结构规划**，不产出成品文件，手动 `/ppt-engineering` 调用，不自动触发。内容：需求分析（时长 / 听众 / 目标）→ 结构选型 → 内容工程 → 视觉设计原则。适合想清一场分享怎么讲、结构怎么排的时候。
   三方分流（做 PPT 只此三个，按**要规划还是要成品**选）：要想清结构和叙事 → 本 skill；要**单文件 HTML 横向翻页成品**且接受歸藏的两种既定风格（电子杂志风 / 瑞士国际主义）→ `guizang-ppt-skill`；要成品但需要自定义审美探索、强动画，或要把现有 PPTX 转成网页 → `frontend-slides`。用户直接说"做一个 PPT 给我"、不关心方法论时，别先跑本 skill，直接进对应的成品 skill；本 skill 用在结构定不下来、或成品做完要复盘叙事的时候。
 ---
 
@@ -78,7 +78,7 @@ description: |
 **10-20-30 铁律**：
 - 10 页核心内容（不含附录）
 - 20 分钟演讲时长
-- 30 号最小字体（中文 24pt）
+- 30 号最小字体（中文 24pt）；字号阶梯里的 18 只用于脚注和来源，不用于要点
 
 ### 3.2 单页结构模板
 
@@ -146,32 +146,6 @@ spacing:
 | 图片资源 | Unsplash API | Pexels, Midjourney |
 | 图标系统 | Iconify | Feather Icons |
 
-### 5.1 Python-pptx 模板
-
-```python
-from pptx import Presentation
-from pptx.util import Inches, Pt
-
-class PPTEngineer:
-    def __init__(self):
-        self.prs = Presentation()
-        
-    def add_title(self, title, subtitle=None):
-        """极简标题页"""
-        slide = self.prs.slides.add_slide(self.prs.slide_layouts[6])
-        # ... 实现见下方完整代码
-        return slide
-        
-    def add_content(self, title, bullets, visual=None):
-        """标准内容页：左文右图"""
-        slide = self.prs.slides.add_slide(self.prs.slide_layouts[6])
-        # ... 实现
-        return slide
-        
-    def save(self, filename):
-        self.prs.save(filename)
-```
-
 ---
 
 ## 6. 质量核查（AQAL四象限）
@@ -185,9 +159,9 @@ class PPTEngineer:
 
 ---
 
-## 7. 执行流程
+## 7. 规划流程
 
-当用户请求生成 PPT 时：
+当用户请求规划 PPT 时（要成品转 `guizang-ppt-skill` 或 `frontend-slides`）：
 
 ```
 1. 解析需求
@@ -197,15 +171,12 @@ class PPTEngineer:
    └── 判断类型 → 选择模型 → 输出大纲（Markdown）
    
 3. 内容填充
-   └── 按模板填充每页 → 强制限制3点/页
+   └── 按模板填充每页 → 每页支撑点不超过 3 个
    
 4. 视觉设计
    └── 应用设计系统 → 选择工具链
    
-5. 生成输出
-   └── Slidev / Python-pptx / Gamma API
-   
-6. 质量核查
+5. 质量核查
    └── 对照检查清单 → 输出风险提示
 ```
 
@@ -238,7 +209,7 @@ class PPTEngineer:
 
 ## 输出指令格式
 
-用户说"帮我做PPT"时，按以下格式输出：
+用户要规划 PPT 结构时按以下格式输出；要成品转 `guizang-ppt-skill` 或 `frontend-slides`：
 
 ```markdown
 ## PPT 结构大纲

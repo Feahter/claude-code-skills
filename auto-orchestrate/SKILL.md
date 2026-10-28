@@ -78,12 +78,13 @@ task-id 优先级：
 2. 简短功能名。
 3. `YYYY-MM-DD-<topic>`。
 
-持久化目录为 `.workflow/<task-id>/`：
+持久化目录为 `.workflow/<task-id>/`，结构以 `enforce-workflow-schema` 的「目录约定」为准：
 
-- `context.md`：需求事实、项目约束、调用关系、API 查证和验证入口。
-- `plan.md`：任务、lane、依赖、所有权和授权范围。
+- `spec.md`：需求、排除范围和验收口径，按 enforce-workflow-schema 的五区块写。
+- `plan.md`：保留它的 A–D 四区块；任务、lane、依赖、所有权写在 B 区块的任务标签里，授权范围写进 A 区块，D 区块写聚合验证并指向 `results.md`。
+- `context.md`：侦察事实，即项目约束、调用关系、API 查证和验证入口。
 - `ledger.md`：运行进度和恢复点。
-- `results.md`：提交、审查、验证和未验证项。
+- `results.md`：提交、审查、验证和未验证项的逐任务明细。
 
 这些文件是上下文压缩后的恢复依据，不用聊天记忆代替。
 
@@ -344,7 +345,7 @@ P2/P3 返回同一任务执行者自动修复、提交并重跑受影响验证�
 - 最后一条验证命令和退出状态。
 - 阻塞、未验证项和需要用户裁决的 P0/P1。
 
-上下文压缩或会话恢复后，先读取 `context.md`、`plan.md`、`ledger.md`、`results.md`，再用 git 当前事实复核分支和 SHA；不凭记忆继续。
+上下文压缩或会话恢复后，先读取 `spec.md`、`context.md`、`plan.md`、`ledger.md`、`results.md`，再用 git 当前事实复核分支和 SHA；不凭记忆继续。
 
 需要 handoff 时，交接包必须包含以上文件路径、当前阶段、剩余预算、已授权范围、禁止动作和唯一下一步。接收者复核事实后才能继续。
 

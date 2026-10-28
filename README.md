@@ -55,7 +55,7 @@ cp -R <skill-name> ~/.claude/skills/
 
 仓库版本对公司项目名做了占位替换，与本地实际运行版本存在预期内的差异，同步时不要反向覆盖：
 
-- `enforce-workflow-schema` / `tame-frontend`：项目名与领域 skill 名替换为 `your-app` / `<domain-feature>` / `<chain-integration>`，Jira 前缀替换为 `PROJ-`。`enforce-workflow-schema/evals/` 沿用同一映射，`run_baseline.sh` 里 claude 可执行文件的 home 路径替换为 `/Users/me/`，跑之前改成本机路径；基线报告里的任务目录名和通过率是实测数据，原样保留。
+- `enforce-workflow-schema` / `tame-frontend`：项目名与领域 skill 名替换为 `your-app` / `<domain-feature>`，Jira 前缀替换为 `PROJ-`。`enforce-workflow-schema/evals/` 沿用同一映射，`run_baseline.sh` 里 claude 可执行文件的 home 路径替换为 `/Users/me/`，跑之前改成本机路径；基线报告里的任务目录名和通过率是实测数据，原样保留。
 - `loss-analysis/scripts/test_scan.py`：测试用例里的仓库名替换为 `demo-app` / `demo-web-test`，本机 home 路径替换为 `/Users/me/`。替换处只是测试输入字符串，替换后单测全绿。
 - `test-strategist/evals/`：实测样例中的内部包名与主项目替换为 `@scope/utils` / `shared-utils` / `main-app`，技术细节（函数名、选项名、行号）原样保留，替换后门禁脚本仍通过。
 - `auto-grill`：`SKILL.md`、`references/step7-sediment.md` 和 `evals/evals.json` 里的本机 home slug 替换为 `-Users-me`，项目名替换为 `demo-app`。其中 `~/.claude/projects/-Users-me/memory/feedback_judgment-defaults.md` 是 skill 正文里唯一的硬编码绝对路径，安装后需改成自己 home 对应的 slug，否则 Step 0 那一步只会静默读不到。

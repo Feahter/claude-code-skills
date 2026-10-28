@@ -69,7 +69,8 @@ SYSTEM_INJECTION_PATTERNS = [
 SYS_RE = re.compile("|".join(SYSTEM_INJECTION_PATTERNS), re.MULTILINE)
 
 VERIFY_RE = re.compile(
-    r"tsc|typecheck|pytest|jest|npm test|yarn test|pnpm test|cargo test|go test|build|eslint|biome",
+    r"tsc|typecheck|pytest|jest|vitest|playwright test|unittest|test_\w*\.py|"
+    r"npm test|yarn test|pnpm test|cargo test|go test|build|eslint|biome",
     re.IGNORECASE,
 )
 
@@ -88,6 +89,36 @@ def _needs_verify(text):
     if GIT_CLAIM_RE.search(text) and not CLAIM_RE.search(GIT_CLAIM_RE.sub("", text)):
         return False
     return True
+
+
+# 未验证检查只针对改过代码的轮次:发日报、调研结论、实验进度这类声明本来就没有
+# 测试可跑,算进来只会淹没真信号(2026-10-15 抽 15 条无一是漏跑测试)。
+CODE_EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
+CODE_FILE_RE = re.compile(
+    r"\.(py|[cm]?[jt]sx?|go|rs|java|kt|swift|rb|php|sh|zsh|vue|svelte|css|scss|sql|ipynb)$",
+    re.IGNORECASE,
+)
+
+
+def is_code_edit(tool_call):
+    if tool_call.get("name") not in CODE_EDIT_TOOLS:
+        return False
+    inp = tool_call.get("input") or {}
+    path = inp.get("file_path") or inp.get("notebook_path") or ""
+    return bool(CODE_FILE_RE.search(path))
+
+
+def is_headless_session(records):
+    """claude -p 启动的会话记录带 entrypoint=sdk-cli。
+
+    这类会话的"用户消息"是脚本写好的提示词(日报模版、eval 题面),不是人在实时
+    回应,不能算纠正或回滚。日报模版里的「不要自创样式」曾占回滚命中的 7/10。
+    """
+    for _, r in records:
+        ep = r.get("entrypoint")
+        if ep:
+            return ep == "sdk-cli"
+    return False
 
 
 def is_correction(text, has_prior_assistant):
@@ -212,6 +243,20 @@ RETRY_NEAR_IDENTICAL = 0.85
 RETRY_PARTIAL = 0.6
 
 
+def classify_retry(cmd, next_cmds):
+    if not next_cmds:
+        return "no_followup"
+    sim = max(
+        difflib.SequenceMatcher(None, norm_cmd(cmd)[:400], x[:400]).ratio()
+        for x in next_cmds
+    )
+    if sim >= RETRY_NEAR_IDENTICAL:
+        return "retry_near_identical"
+    if sim >= RETRY_PARTIAL:
+        return "retry_partial"
+    return "moved_on"
+
+
 def norm_cmd(c):
     return re.sub(r"\s+", " ", c or "").strip()
 
@@ -334,7 +379,8 @@ def main():
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     proj_stats = defaultdict(lambda: {
-        "sessions": 0, "user_msgs": 0, "delegated_msgs": 0, "tool_calls": 0,
+        "sessions": 0, "user_msgs": 0, "delegated_msgs": 0, "headless_msgs": 0,
+        "tool_calls": 0,
         "corrections": 0, "rollbacks": 0, "tool_failures": 0,
         "duplicate_reads": 0, "compactions": 0,
         "completion_no_verify": 0, "subagent_calls": 0,
@@ -345,6 +391,7 @@ def main():
     fail_buckets = Counter()
     fail_bucket_examples = defaultdict(list)
     retry_after_fail = Counter()
+    retry_examples = defaultdict(list)
     monthly = defaultdict(lambda: {
         "sessions": 0, "tool_calls": 0, "failures": 0, "buckets": Counter(),
     })
@@ -368,6 +415,7 @@ def main():
         if not records:
             continue
         is_subagent_session = f.parent.name == "subagents" or f.name.startswith("agent-")
+        is_headless = is_headless_session(records)
         first_ts = last_ts = None
         for _, r in records:
             ts = parse_ts(r.get("timestamp"))
@@ -387,6 +435,7 @@ def main():
 
         file_reads = defaultdict(list)
         last_assistant = {"text": "", "tools": []}
+        edited_code_this_turn = False  # 自上一条真用户消息以来是否改过代码文件
         explore_run = []  # (tool, ts)
 
         def flush_explore_run():
@@ -455,21 +504,16 @@ def main():
                                 })
                             if name == "Bash":
                                 cands = next_bash_cmds(records, idx)
-                                if not cands:
-                                    retry_after_fail["no_followup"] += 1
-                                else:
-                                    sim = max(
-                                        difflib.SequenceMatcher(
-                                            None, norm_cmd(cmd)[:400], x[:400]
-                                        ).ratio()
-                                        for x in cands
-                                    )
-                                    if sim >= RETRY_NEAR_IDENTICAL:
-                                        retry_after_fail["retry_near_identical"] += 1
-                                    elif sim >= RETRY_PARTIAL:
-                                        retry_after_fail["retry_partial"] += 1
-                                    else:
-                                        retry_after_fail["moved_on"] += 1
+                                kind = classify_retry(cmd, cands)
+                                retry_after_fail[kind] += 1
+                                if len(retry_examples[kind]) < 3:
+                                    retry_examples[kind].append({
+                                        "project": proj,
+                                        "ts": r.get("timestamp"),
+                                        "failed_cmd": cmd[:200],
+                                        "error": err_text[:160],
+                                        "next_cmds": [c[:200] for c in cands],
+                                    })
                 real, text = is_real_user_text(msg, bool(r.get("isMeta")))
                 if not real:
                     if isinstance(content, list) and any(
@@ -483,10 +527,15 @@ def main():
                 # 真用户消息打断 explore run
                 flush_explore_run()
                 explore_run = []
+                edited_code_this_turn = False
 
                 if is_subagent_session:
                     ps["delegated_msgs"] += 1
                     global_stats["delegated_msgs"] += 1
+                    continue
+                if is_headless:
+                    ps["headless_msgs"] += 1
+                    global_stats["headless_msgs"] += 1
                     continue
 
                 ps["user_msgs"] += 1
@@ -550,6 +599,8 @@ def main():
                 ps["tool_calls"] += len(tools)
                 global_stats["tool_calls"] += len(tools)
                 for t in tools:
+                    if is_code_edit(t):
+                        edited_code_this_turn = True
                     if t.get("name") in ("Agent", "Task"):
                         ps["subagent_calls"] += 1
                         global_stats["subagent_calls"] += 1
@@ -561,7 +612,8 @@ def main():
                             file_reads[fp].append(lineno)
 
                 text = get_text(r.get("message", {}))
-                if text and CLAIM_RE.search(text) and _needs_verify(text):
+                if (text and edited_code_this_turn
+                        and CLAIM_RE.search(text) and _needs_verify(text)):
                     verified = False
                     for j in range(max(0, idx - 12), min(len(records), idx + 12)):
                         nxt = records[j][1]
@@ -638,7 +690,11 @@ def main():
                 "同会话整文件读取至少三次的候选项；文件修改、压缩或合理复查都可能导致重复。"
             ),
             "completion_no_verify": (
-                "完成声明附近未识别到常见验证命令的规则命中；不等于一定没有验证。"
+                "本轮改过代码文件、且完成声明附近未识别到常见验证命令的规则命中；"
+                "不等于一定没有验证。"
+            ),
+            "headless_msgs": (
+                "claude -p 会话(entrypoint=sdk-cli)里脚本写的提示词，不计入用户消息、纠正和回滚。"
             ),
         },
         "global": dict(global_stats),
@@ -669,6 +725,7 @@ def main():
         "fail_buckets": dict(fail_buckets.most_common()),
         "fail_bucket_examples": dict(fail_bucket_examples),
         "retry_after_fail": dict(retry_after_fail),
+        "retry_examples": dict(retry_examples),
         "monthly": [
             {
                 "month": m,
@@ -699,7 +756,7 @@ def main():
         "user_msgs": g.get("user_msgs", 0),
         "assistant_turns": g.get("assistant_turns", 0),
         "tool_calls": g.get("tool_calls", 0),
-        "tool_fail_rate": round(g.get("tool_failures", 0) / g.get("tool_calls", 1) * 100, 2),
+        "tool_fail_rate": round(g.get("tool_failures", 0) / max(g.get("tool_calls", 1), 1) * 100, 2),
         "correction_rate": round(g.get("corrections", 0) / max(g.get("user_msgs", 1), 1) * 100, 2),
         "completion_no_verify": g.get("completion_no_verify", 0),
         "duplicate_reads": g.get("duplicate_reads", 0),

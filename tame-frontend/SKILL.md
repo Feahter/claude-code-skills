@@ -1,7 +1,7 @@
 ---
 name: tame-frontend
 disable-model-invocation: true
-description: 资深前端架构师视角的决策辅助，用于前端架构设计、模块拆分、状态分层、Monorepo/微前端/模块联邦、渲染策略选型（SSR/CSR/SSG/ISR/RSC/Islands）、防腐层、设计系统、性能预算、技术债与复杂度治理、架构方案评估。当用户讨论这类"判断/选型/复杂度评估"，或问"要不要上微前端、状态怎么分层、评估下这个架构、前端怎么做 DDD、性能优化方向在哪"时触发。不适用：单点 bug（diagnose）、本地变更审查（open-code-review）、单文件简化（simplify）、新需求实现（<domain-feature>/<chain-integration>）、纯 React 用法（vercel-react-best-practices/vercel-composition-patterns）。
+description: 资深前端架构师视角的决策辅助，手动 `/tame-frontend` 调用，不自动触发。适合前端架构设计、模块拆分、状态分层、Monorepo/微前端/模块联邦、渲染策略选型（SSR/CSR/SSG/ISR/RSC/Islands）、防腐层、设计系统、性能预算、技术债与复杂度治理、架构方案评估这类判断、选型和复杂度评估。不适用：单点 bug（diagnose）、本地变更审查（open-code-review）、单文件简化（simplify）、新需求实现（<domain-feature>）、纯 React 用法（vercel-react-best-practices/vercel-composition-patterns）。
 ---
 
 # Tame Frontend：驯服前端复杂度
@@ -27,30 +27,30 @@ description: 资深前端架构师视角的决策辅助，用于前端架构设�
 - 单点 bug 排查 → 用 `diagnose`
 - 本地 git 变更代码审查 → 用 `open-code-review`
 - 单文件 / 单函数简化 → 用 `simplify`
-- 实现具体需求 / 接入新链 / 新平台 → 用 `<domain-feature>` / `<chain-integration>`
+- 实现具体需求 / 接入新链 / 新平台 → 用 `<domain-feature>`
 - React Hook 用法 / Suspense / Compose 模式 → 用 `vercel-react-best-practices` / `vercel-composition-patterns`
 
 如果用户在做实现，但**实现前需要先做架构判断**（比如"这个新模块要放哪、怎么和老模块边界对齐"），那这个 skill 仍然适用——先做判断，再交回去。
 
-## 决策铁律（共 5 篇源文档共识浓缩）
+## 决策原则
 
-按这个优先级思考，**冲突时高位铁律压低位铁律**。
+按这个优先级思考，**冲突时排在前面的原则优先**。
 
 ### 1. 优先降低耦合，而非追求局部优雅
 - 架构的成本不在第一次开发，而在 1 年后改动、3 年后重构、10 个团队同时开发时
 - 真正的判据是 **deletion test**：把这个模块删掉，复杂度是消失了，还是分散到 N 个调用方？
-- "改 A 时会不会炸 B/C/D" 比"代码漂不漂亮"重要 100 倍
+- "改 A 时会不会炸 B/C/D" 比"代码漂不漂亮"重要得多
 
 ### 2. 状态按生命周期 × 作用域分层，不是按"全局/局部"二分
 - 5 层状态拓扑：URL → Server Cache → Global → Local → Derived
-- **能用 URL 状态解决的，绝不用全局 Store**
+- **能用 URL 状态表达的，优先用 URL，不放全局 Store**（可分享、可回退、无需同步）
 - **服务端缓存不是 Client State**：用 TanStack Query / SWR 治理，别手写 Redux 装它
 - **派生状态不是状态**：能算出来的，就不该存
 
 详细决策表见 [references/02-state-topology.md](references/02-state-topology.md)。
 
-### 3. 模块之间走显式契约，禁止隐式约定
-- 跨模块数据流必须有 TypeScript 接口 + Schema 校验（zod / valibot），`any` 透传是技术债的癌细胞
+### 3. 模块之间走显式契约，不靠隐式约定
+- 跨模块数据流要有 TypeScript 接口 + Schema 校验（zod / valibot），`any` 透传会让技术债无声扩散
 - 后端字段直接贯穿前端 = 把前端做成后端的傀儡，必须加防腐层 Adapter
 - 路由不是字符串，是强类型对象；事件总线 Payload 要校验
 - 能在构建时（lint / type / AST）拦截的错误，绝不交给运行时
@@ -114,8 +114,3 @@ description: 资深前端架构师视角的决策辅助，用于前端架构设�
 - 不要堆砌时髦技术名词，技术选项是手段不是目的
 - 中文输出；保留 React / Server Component / Module Federation 等通用术语原词
 
-## 一句话总结
-
-**真正高级的前端架构，不是技术炫酷，而是系统在 5 年后仍然可维护。**
-
-衡量一个架构师，不是看他能用多少新轮子，而是看他做的决策在团队规模翻倍、业务方向转弯、人员流动一遍后，还能不能站得住。

@@ -19,7 +19,7 @@ description: |
 
 产物不是场景清单，是**策略包**（Strategy Package）：风险台账 + 排序后的验证义务 + 可测试性缺口 + 明确的不覆盖范围。
 
-## 六条铁律（违反即失败）
+## 六条铁律
 
 1. **无证据不出风险**。每条风险必须指向 `file:line`、需求段落编号、或事故记录。指不出来的，`evidence` 必须显式写 `assumption-no-evidence` 并降一级——不许凭空给发生概率，不许把网上的通用测试清单当本项目风险。
 2. **每条风险必须有处置**，五选一：`test`（交 playbook）/ `monitor`（线上观测）/ `design-fix`（改源码或架构）/ `explore`（人工探索，不自动化）/ `accept`（明确接受，记录决策人）。**只列风险不给处置 = 没做完**。
@@ -101,7 +101,7 @@ confidence: high                          # high/medium/low，与证据强度一
 
 **义务里不写实现**：不写用哪个测试框架、哪一层、什么选择器。层级归属由 `playbook/references/test-pyramid.md` 判定。
 
-**YAML 书写约定**（实测踩过，别再踩）：`oracle` 与 `failure_mode` 天生充满符号字面量，两个坑必踩——值里出现「冒号+空格」（`lessConfig: undefined`、`Tests: N passed`）会被当成嵌套映射；值以符号开头（`">-"`、`<0.01`、`|`、`*`）会被当成 YAML 语法。**这类值一律用 block scalar**：
+**YAML 书写约定**：`oracle` 与 `failure_mode` 天生充满符号字面量，两个坑必踩——值里出现「冒号+空格」（`lessConfig: undefined`、`Tests: N passed`）会被当成嵌套映射；值以符号开头（`">-"`、`<0.01`、`|`、`*`）会被当成 YAML 语法。**这类值一律用 block scalar**：
 
 ```yaml
 oracle: |
@@ -175,7 +175,7 @@ bash ~/.claude/skills/test-strategist/scripts/validate-package.sh .test-strategy
 
 协作流向：本 skill 出策略包 → playbook 把 `disposition: test` 的义务落成分层测试代码（回填 risk_id）→ e2e-test-quality 按 risk_id 验收「义务是否真被实现、实现得好不好」。
 
-**e2e-test-quality 不得自行重算风险优先级**，playbook 不得重新定义业务优先级，本 skill 不得定义测试写法。任何一方越界就是历史上那次标准漂移的重演。
+**e2e-test-quality 不得自行重算风险优先级**，playbook 不得重新定义业务优先级，本 skill 不得定义测试写法。
 
 ## 并行执行器（可选）
 

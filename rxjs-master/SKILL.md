@@ -1,7 +1,7 @@
 ---
 name: rxjs-master
 disable-model-invocation: true
-description: "RxJS / Observable 响应式编程专家。当用户在 TS/JS 代码里写、读、调、重构 RxJS 时触发，覆盖操作符选型、订阅管理与内存泄漏、错误处理与重试、marble 测试、性能调优、Promise 互转、Angular Signals 与 React hooks 互操作、响应式模式设计。只要代码出现 Observable / pipe / Subject 或用户提到响应式流 / reactive stream 就应触发，中英文请求均适用。不适用于纯 Promise / async-await 代码、RxJS 安装构建问题、一行玩具级问答。"
+description: "RxJS / Observable 响应式编程专家，手动 `/rxjs-master` 调用，不自动触发。适合在 TS/JS 代码里写、读、调、重构 RxJS 时加载，覆盖操作符选型、订阅管理与内存泄漏、错误处理与重试、marble 测试、性能调优、Promise 互转、Angular Signals 与 React hooks 互操作、响应式模式设计。不适用于纯 Promise / async-await 代码、RxJS 安装构建问题、一行玩具级问答。"
 ---
 
 # RxJS Master
@@ -143,7 +143,7 @@ function double(n: number) { return n * 2; }
 ### #6: Using deprecated toPromise()
 
 ```typescript
-// BAD — toPromise is deprecated since RxJS 7, removed in 8
+// BAD — toPromise is deprecated since RxJS 7
 const value = await source$.toPromise();
 
 // GOOD — firstValueFrom for first emission
@@ -204,8 +204,10 @@ Writing reusable operators is essential for DRY reactive code. Two approaches de
 Combine existing operators using the standalone `pipe()` function. This is simpler and less error-prone because existing operators handle subscription lifecycle correctly.
 
 ```typescript
-import { pipe, OperatorFunction } from 'rxjs';
-import { filter, map } from 'rxjs/operators';
+import {
+  pipe, filter, map, debounceTime, distinctUntilChanged,
+  MonoTypeOperatorFunction, OperatorFunction,
+} from 'rxjs';
 
 // MonoTypeOperatorFunction<T> when input/output types are the same
 function filterNil<T>(): MonoTypeOperatorFunction<T> {
@@ -235,7 +237,7 @@ input$.pipe(searchPipeline(500)).subscribe();
 Create operators from scratch when you need custom subscription logic (e.g., custom buffering, stateful transforms). Always handle subscriber teardown to avoid leaks.
 
 ```typescript
-import { Observable, OperatorFunction } from 'rxjs';
+import { Observable, MonoTypeOperatorFunction } from 'rxjs';
 
 function tapOnce<T>(fn: (value: T) => void): MonoTypeOperatorFunction<T> {
   return (source: Observable<T>) =>

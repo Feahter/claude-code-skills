@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # delete-remote.sh [--dry-run]
-# 读取 tmp/branch-cleanup/remote-candidates.txt，分批 push 删除
+# 读取 $WORK/remote-candidates.txt，分批 push 删除
 # 整批失败时回退到单条重试，避免一个坏分支连累整批
 
 set -euo pipefail
+source "$(dirname "$0")/_workdir.sh"
 
 DRY_RUN=0
 for arg in "$@"; do
@@ -13,12 +14,12 @@ for arg in "$@"; do
   esac
 done
 
-SRC="tmp/branch-cleanup/remote-candidates.txt"
+SRC="$WORK/remote-candidates.txt"
 [ -f "$SRC" ] || { echo "未找到候选文件: $SRC" >&2; exit 1; }
 
-DELETED="tmp/branch-cleanup/deleted-remote.txt"
-FAILED="tmp/branch-cleanup/failed-remote.txt"
-LOG="tmp/branch-cleanup/push.log"
+DELETED="$WORK/deleted-remote.txt"
+FAILED="$WORK/failed-remote.txt"
+LOG="$WORK/push.log"
 : > "$DELETED"
 : > "$FAILED"
 : > "$LOG"

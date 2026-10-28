@@ -19,7 +19,7 @@ macOS `pmset` 默认 `sleep 1`(空闲 1 分钟整机睡眠),睡眠冻结所有�
 
 **图标本身就是状态指示**:睁眼猫 = 保活开着,闭眼猫(右上角飘 z)= 已关闭。每次切换 `sync_icon` 把对应那只贴到 app 上,所以不点开、不看通知,扫一眼桌面就知道当前是开还是关 —— 通知只是切换那一刻的回显,一闪就没,不能当状态看。要一个确定答案就跑 `night-run.sh status`,它读 plist 和 launchd,是权威;图标是它的投影,只在走脚本切换时同步(手工 `launchctl bootout` 绕过脚本会让两者不一致)。
 
-`~/.claude/scripts/night-run.sh`,四个子命令,都不再接时长参数:
+`~/.claude/scripts/night-run.sh`,四个子命令,不接时长参数(传入会被忽略并打印提示):
 
 ```bash
 ~/.claude/scripts/night-run.sh on       # 开启:一直保活到手动关闭,重启后自动恢复
@@ -48,7 +48,7 @@ PREFIX=~/.claude/scripts bash ~/.claude/scripts/keepawake-install.sh
 
 ## 给别的机器用
 
-`~/Desktop/keepawake-installer.tar.gz` 是可分发的安装包(11 KB,不含 icns,装时现画)。对方解包跑 `./keepawake-install.sh` 即可,不需要 sudo(装的是 per-user LaunchAgent)。`PREFIX` 换安装目录,`KEEPAWAKE_APP_NAME` 换桌面 app 名和通知标题。卸载跑安装目录里的 `keepawake-uninstall.sh`。
+可分发的安装包 `~/Desktop/keepawake-installer.tar.gz` 由下面的重新打包命令生成(不含 icns,装时现画),需要时先打包。对方解包跑 `./keepawake-install.sh` 即可,不需要 sudo(装的是 per-user LaunchAgent)。`PREFIX` 换安装目录,`KEEPAWAKE_APP_NAME` 换桌面 app 名和通知标题。卸载跑安装目录里的 `keepawake-uninstall.sh`。
 
 重新打包(改了任何源文件之后):
 

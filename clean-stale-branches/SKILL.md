@@ -1,6 +1,6 @@
 ---
 name: clean-stale-branches
-description: 一键清理当前 git 仓库中本项目用户创建、超过 N 天（默认 30 天）未更新的本地和远端分支。先安全删（已合并）再汇报未合并清单，远端删除前二次确认，支持 dry-run 预览和 reflog 恢复。触发场景：要求清理、收拾或归档自己名下的旧分支，无论是否给出天数（中英文同理）。不适用于：跨仓库批量操作、按主题删分支、删别人的分支。
+description: 一键清理当前 git 仓库中本项目用户创建、超过 N 天（默认 30 天）未更新的本地和远端分支。先安全删（已合并）再汇报未合并清单，远端删除前二次确认，支持 dry-run 预览和本地误删恢复。触发场景：要求清理、收拾或归档自己名下的旧分支，无论是否给出天数（中英文同理）。不适用于：跨仓库批量操作、按主题删分支、删别人的分支。
 ---
 
 # Clean Stale Branches
@@ -43,9 +43,9 @@ git fetch --all --prune 2>&1 | tail -20
 ### Step 2：生成候选清单并展示
 
 跑 `scripts/list-candidates.sh <days> <author_email>`，产物：
-- `tmp/branch-cleanup/local-candidates.txt`
-- `tmp/branch-cleanup/remote-candidates.txt`
-- `tmp/branch-cleanup/candidates-preview.txt`（带日期）
+- `$WORK/local-candidates.txt`
+- `$WORK/remote-candidates.txt`
+- `$WORK/candidates-preview.txt`（带日期）
 
 **必须把两个清单的前 20 条 + 总数展示给用户**，并用 `AskUserQuestion` 收集：
 
@@ -64,9 +64,9 @@ git fetch --all --prune 2>&1 | tail -20
 ### Step 3：本地安全删
 
 跑 `scripts/delete-local.sh`（加 `--dry-run` 先预览，加 `--force` 走 `-D`）：
-- 成功的记入 `tmp/branch-cleanup/deleted-local.txt`
-- 失败（未合并/其他错误）记入 `tmp/branch-cleanup/unmerged-local.txt`
-- 错误原因落在 `tmp/branch-cleanup/delete-local.err.log`
+- 成功的记入 `$WORK/deleted-local.txt`（每行 `分支名<TAB>删除前 sha`，只追加不清空，Step 4 再跑 `--force` 也不会冲掉 Step 3 的记录）
+- 失败（未合并/其他错误）记入 `$WORK/unmerged-local.txt`
+- 错误原因落在 `$WORK/delete-local.err.log`
 
 注意 squash merge 场景——见开头警告。
 
@@ -81,19 +81,19 @@ git fetch --all --prune 2>&1 | tail -20
 
 展示远端候选清单总数 + 部分条目，等用户"确认删"再执行。
 
-**强烈建议先 `scripts/delete-remote.sh --dry-run` 给用户看一次最终计划**，再正式跑。
+先跑 `scripts/delete-remote.sh --dry-run` 给用户看最终计划，用户确认后再正式跑。
 
 正式跑 `scripts/delete-remote.sh`：
 - 分批 `git push origin :br1 :br2 ...`（每批 10 个，减少连接开销）
 - 批量失败时自动回退到单条重试，避免一个坏分支连累整批
-- 失败清单落在 `tmp/branch-cleanup/failed-remote.txt`
+- 失败清单落在 `$WORK/failed-remote.txt`
 
 ### Step 6：汇总
 
-输出一张表：本地已删 / 本地保留 / 远端已删 / 失败数。说明临时产物在 `tmp/branch-cleanup/`，需要保留就留着。
+输出一张表：本地已删 / 本地保留 / 远端已删 / 失败数。说明临时产物在 `$WORK/`（脚本输出里有实际路径，默认在 `$TMPDIR/branch-cleanup/<仓库名>-<hash>/`，没有 `TMPDIR` 时用 `/tmp`；设 `BRANCH_CLEANUP_DIR` 可覆盖），需要保留就留着。
 
 **提示用户恢复方式**：
-- 本地删除可通过 `scripts/restore-local.sh` 从 reflog 恢复（无参数列候选，带分支名交互恢复）
+- 本地删除可通过 `scripts/restore-local.sh` 按 `deleted-local.txt` 里记下的 sha 恢复（无参数列候选，带分支名交互恢复）
 - 远端删除**不可恢复**，只能靠本地还留着的分支重新 push
 
 ## 禁止事项
@@ -107,8 +107,8 @@ git fetch --all --prune 2>&1 | tail -20
 ## 参数说明
 
 - `list-candidates.sh <days> <author_email> [protected_regex]`
-- `delete-local.sh [--force] [--dry-run]` （读 `tmp/branch-cleanup/local-candidates.txt`）
-- `delete-remote.sh [--dry-run]` （读 `tmp/branch-cleanup/remote-candidates.txt`）
+- `delete-local.sh [--force] [--dry-run]` （读 `$WORK/local-candidates.txt`）
+- `delete-remote.sh [--dry-run]` （读 `$WORK/remote-candidates.txt`）
 - `restore-local.sh [branch-name]` （无参数列候选，带分支名交互恢复）
 
 默认 `protected_regex="^(master|main|pre|dev|HEAD)$"`。

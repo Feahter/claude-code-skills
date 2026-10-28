@@ -16,7 +16,7 @@ description: |
 
 playbook 三位一体：(1) **测试方法论权威**——references 覆盖单元/集成/E2E 全套技巧；(2) **全层执行引擎**——四阶段对单元/集成/E2E 分层分流、自带通用生成；(3) **驱动引擎**——项目有专属测试 skill / 标杆时，由本 skill 的方法论与四阶段驱动它因地制宜生成，无则用通用模板兜底（见末尾「与其他 skill 协作」）。
 
-## 六条铁律（违反即失败）
+## 六条铁律
 
 1. **测业务行为，不测 UI 细节**——spec 描述"admin 能审批退款"，不是"点这个按钮再点那个"。UI 操作封装到 `tests/actions/` 业务动作里。详见 `references/architecture.md`。
 2. **测用户能感知的，不测组件内部**——断言用户看见什么、能做什么；不测 className、不测 store、不测 hook。
@@ -119,7 +119,7 @@ bash ~/.claude/skills/playbook/scripts/gen-test.sh \
 
 **模板选型**：跨页/多步流程 → `business-dsl`（spec 调业务动作，UI 操作藏在 `tests/actions/`，见 `references/architecture.md` + `examples/actions/`）；单页简单流程 → `happy-path` / `form-submit`；多角色权限边界（admin 能进、guest 被挡）→ `permission-check`。
 
-脚本内部：套模板 + 占位符替换 + 选择器规则注入。**LLM 不要自由写 spec**，永远先选模板。如果 dev server 在跑，可以辅助 `npx playwright codegen <url>` 抓真实 selector。
+脚本内部：套模板 + 占位符替换 + 选择器规则注入。以模板为起点生成 spec；模板覆盖不了的场景按 references 的规则手写，并在 test-plan.md 说明原因。如果 dev server 在跑，可以辅助 `npx playwright codegen <url>` 抓真实 selector。
 
 生成的 spec 必须满足：
 - 选择器走 `references/selectors.md` 优先级
@@ -217,8 +217,6 @@ bash ~/.claude/skills/playbook/scripts/validate-test.sh tests/<file>.spec.ts
 
 ## 触发与边界
 
-**触发**：用户消息含 playwright / E2E / 自动化测试 / UI 测试 / 单元测试 / 单测 / 集成测试 / vitest / jest / testing-library / msw / 测试金字塔 / 覆盖率 / flaky / storageState / fixture / trace / codegen / page object 任一关键词，或要求"给项目加测试"。
-
 **入口消歧**（关键词命中不等于该由本 skill 接）：本 skill 的位置是「已知要测什么 → 产出测试代码」。问"这块怎么测"时先分辨手里有什么——只有需求或变更、还不知道该测哪些点，归 `test-strategist`；已知测什么、问用什么写法落地，归本 skill。问"覆盖够不够"同理：配覆盖率工具、看 coverage 数字归本 skill；该覆盖哪些风险点归 `test-strategist`；评已有套件覆盖度归 `e2e-test-quality`。完整问法路由表见 `~/.claude/skills/test-strategist/references/ownership.md` 的「问法路由」节。
 
 **承接范围**：
@@ -246,5 +244,5 @@ bash ~/.claude/skills/playbook/scripts/validate-test.sh tests/<file>.spec.ts
 - `e2e-test-quality`：**质量标准的下游消费者**。它不重复定义写法，选择器 / 断言 / flaky / 分层归属一律引用本 skill 的 `references/`；本 skill 是单一事实源，规则冲突时以这里为准。用它的场合：阶段 4 校验通过后要一份质量打分或治理基线、接手历史套件要先定级、用户直接问"这套 E2E 写得好不好"。
 - `webapp-testing`：阶段 4 校验失败时，调用它跑 dev server 抓页面状态
 - `dispatching-parallel-agents`：阶段 4.5 派 agent 时遵循其方法论
-- `verify` / `run`：用户需要手动看效果时调用
+- `run`：用户需要手动看效果时调用
 - `open-code-review`：测试代码写完后让它审一遍（审代码质量，不审测试有效性——后者是 `e2e-test-quality`）
