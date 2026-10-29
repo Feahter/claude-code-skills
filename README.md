@@ -38,6 +38,7 @@ cp -R <skill-name> ~/.claude/skills/
 | [auto-grill](./auto-grill) | 代答式拷问：把需求交给隔离的子 agent 当审问官逐轮出题，自己代替用户答题并查证事实，最后交一份带依据标注与「待你确认」区的共识方案 |
 | [ts-type-gymnastics](./ts-type-gymnastics) | TypeScript 类型层的设计、排错与审计：工具类型与泛型签名、模板字面量与递归推导、TS2589 等类型报错、替换 any / as、tsconfig 与类型测试，示例按 TS 7.0 严格配置校验过 |
 | [ppt-engineering](./ppt-engineering) | PPT 的方法论与结构规划：需求分析、结构选型、内容工程、视觉设计原则，只出规划不出成品文件 |
+| [work-report](./work-report) | 从本地各仓库本人的 commit 生成日报与周报草稿：脚本判合并状态、算规模和查格式，headless claude 只负责归纳文字；日报由 launchd 定时触发并发到 Slack thread，周报只落本地草稿 |
 
 ## Skill 之间的配合
 
@@ -49,6 +50,15 @@ cp -R <skill-name> ~/.claude/skills/
 
 ## 额外依赖
 
+`work-report` 的 `SKILL.md` 按本机绝对路径引用脚本，单独软链 skill 目录不够，还要把脚本和定时器放到对应位置：
+
+```bash
+mkdir -p ~/.claude/scripts && ln -s "$(pwd)/work-report/scripts" ~/.claude/scripts/work-report
+cp work-report/launchd/*.plist ~/Library/LaunchAgents/   # 先把里面的 /Users/me 改成自己的 home，再 launchctl load
+```
+
+自动发 Slack 还需要 `~/.claude/.secrets/slack-daily-report.env` 里的 user token，申请方法见其 `SKILL.md` 的「token 配置」一节；不配 token 时只生成草稿。
+
 `test-strategist` 的并行执行器 `~/.claude/agents/custom/test-risk-scanner.md` 是本机 agent 定义，不在本仓库内。缺它不影响主流程——它只用于「一次扫多个互不依赖的模块」和「对已产出策略包做反方复核」两种场景，单模块分析本来就应该由主会话直接走 skill。
 
 ## 脱敏说明
@@ -59,3 +69,4 @@ cp -R <skill-name> ~/.claude/skills/
 - `loss-analysis/scripts/test_scan.py`：测试用例里的仓库名替换为 `demo-app` / `demo-web-test`，本机 home 路径替换为 `/Users/me/`。替换处只是测试输入字符串，替换后单测全绿。
 - `test-strategist/evals/`：实测样例中的内部包名与主项目替换为 `@scope/utils` / `shared-utils` / `main-app`，技术细节（函数名、选项名、行号）原样保留，替换后门禁脚本仍通过。
 - `auto-grill`：`SKILL.md`、`references/step7-sediment.md` 和 `evals/evals.json` 里的本机 home slug 替换为 `-Users-me`，项目名替换为 `demo-app`。其中 `~/.claude/projects/-Users-me/memory/feedback_judgment-defaults.md` 是 skill 正文里唯一的硬编码绝对路径，安装后需改成自己 home 对应的 slug，否则 Step 0 那一步只会静默读不到。
+- `work-report`：公司名替换为 `acme`，仓库名替换为 `main-app` / `main-app-test` / `side-web`，发版分支前缀随之变成 `acme-<MMDD>`（`collect.sh` 的识别正则同步改了），Slack 频道 ID 与用户 ID 替换为 `C0XXXXXXXXX` / `U0LEADXXXXX` / `U0CLAUDEXXX`，同事名与内部 bot 名替换为「主管」/ `TeamBot`，plist 里的 home 路径替换为 `/Users/me/`。使用前把 `send.sh` 的默认频道、thread 发起人和署名 ID 换成自己团队的，或用 `WORK_REPORT_CHANNEL` 等环境变量覆盖。

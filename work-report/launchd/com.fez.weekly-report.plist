@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>HOME</key>
+		<string>/Users/me</string>
+		<key>NODE_EXTRA_CA_CERTS</key>
+		<string>/etc/ssl/certs/EnterpriseCertificates.pem</string>
+		<key>PATH</key>
+		<string>/Users/me/.local/bin:/Users/me/.nvm/versions/node/v24.13.0/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
+	<key>Label</key>
+	<string>com.fez.weekly-report</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/bash</string>
+		<string>/Users/me/.claude/scripts/work-report/generate.sh</string>
+		<string>weekly</string>
+	</array>
+	<key>RunAtLoad</key>
+	<false/>
+	<key>StandardErrorPath</key>
+	<string>/Users/me/.claude/logs/weekly-report.launchd.err.log</string>
+	<key>StandardOutPath</key>
+	<string>/Users/me/.claude/logs/weekly-report.launchd.out.log</string>
+	<key>StartCalendarInterval</key>
+	<dict>
+		<key>Hour</key>
+		<integer>17</integer>
+		<key>Minute</key>
+		<integer>40</integer>
+		<key>Weekday</key>
+		<integer>5</integer>
+	</dict>
+</dict>
+</plist>
